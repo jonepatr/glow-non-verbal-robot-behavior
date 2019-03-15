@@ -17,19 +17,25 @@ if __name__ == "__main__":
     hparams = args["<hparams>"]
     dataset = args["<dataset>"]
     dataset_root = args["<dataset_root>"]
-    assert dataset in vision.Datasets, (
-        "`{}` is not supported, use `{}`".format(dataset, vision.Datasets.keys()))
-    assert os.path.exists(dataset_root), (
-        "Failed to find root dir `{}` of dataset.".format(dataset_root))
-    assert os.path.exists(hparams), (
-        "Failed to find hparams josn `{}`".format(hparams))
+    assert dataset in vision.Datasets, "`{}` is not supported, use `{}`".format(
+        dataset, vision.Datasets.keys()
+    )
+    assert os.path.exists(
+        dataset_root
+    ), "Failed to find root dir `{}` of dataset.".format(dataset_root)
+    assert os.path.exists(hparams), "Failed to find hparams josn `{}`".format(hparams)
     hparams = JsonConfig(hparams)
     dataset = vision.Datasets[dataset]
+    print(dataset)
+    exit
     # set transform of dataset
-    transform = transforms.Compose([
-        transforms.CenterCrop(hparams.Data.center_crop),
-        transforms.Resize(hparams.Data.resize),
-        transforms.ToTensor()])
+    transform = transforms.Compose(
+        [
+            transforms.CenterCrop(hparams.Data.center_crop),
+            transforms.Resize(hparams.Data.resize),
+            transforms.ToTensor(),
+        ]
+    )
     # build graph and dataset
     built = build(hparams, True)
     dataset = dataset(dataset_root, transform=transform)

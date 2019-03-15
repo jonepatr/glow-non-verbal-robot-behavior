@@ -1,13 +1,18 @@
 import os
+from os.path import basename
 import re
 import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+from luigi_pipeline.audio_processing import Autocorrelation, MelSpectrogram
+from luigi_pipeline.post_process_openpose import PostProcessOpenpose
+from tqdm import tqdm
 
 IMAGE_EXTENSTOINS = [".png", ".jpg", ".jpeg", ".bmp"]
 ATTR_ANNO = "list_attr_celeba.txt"
+
 
 def _is_image(fname):
     _, ext = os.path.splitext(fname)
@@ -46,20 +51,21 @@ def _find_images_and_annotation(root_dir):
                 fname = os.path.splitext(line[0])[0]
                 onehot = [int(int(d) > 0) for d in line[1:]]
                 assert len(onehot) == len(attrs), "{} only has {} attrs < {}".format(
-                    fname, len(onehot), len(attrs))
-                final.append({
-                    "path": images[fname],
-                    "attr": onehot
-                })
+                    fname, len(onehot), len(attrs)
+                )
+                final.append({"path": images[fname], "attr": onehot})
     print("Find {} images, with {} attrs".format(len(final), len(attrs)))
     return final, attrs
 
 
 class CelebADataset(Dataset):
-    def __init__(self, root_dir, transform=transforms.Compose([
-                                           transforms.CenterCrop(160),
-                                           transforms.Resize(32),
-                                           transforms.ToTensor()])):
+    def __init__(
+        self,
+        root_dir,
+        transform=transforms.Compose(
+            [transforms.CenterCrop(160), transforms.Resize(32), transforms.ToTensor()]
+        ),
+    ):
         super().__init__()
         dicts, attrs = _find_images_and_annotation(root_dir)
         self.data = dicts
@@ -70,20 +76,76 @@ class CelebADataset(Dataset):
         data = self.data[index]
         path = data["path"]
         attr = data["attr"]
-        image= Image.open(path).convert("RGB")
+        image = Image.open(path).convert("RGB")
         if self.transform is not None:
             image = self.transform(image)
-        return {
-            "x": image,
-            "y_onehot": np.asarray(attr, dtype=np.float32)
-        }
+        return {"x": image, "y_onehot": np.asarray(attr, dtype=np.float32)}
 
     def __len__(self):
         return len(self.data)
 
 
+class Text2FaceDataset(Dataset):
+    def __init__(self, dataset_files, total_frames=140, data_dir=None):
+        self.data = []
+        self.all_autocorrs = []
+        for n, openpose_file_path in enumerate(
+            tqdm(dataset_files, desc="Loading dataset. Sit back and relax")
+        ):
+            filepath = basename(openpose_file_path).replace(".npy", "")
+            ac = Autocorrelation(data_dir=data_dir, yt_video_id=filepath)
+            self.all_autocorrs.append(np.load(ac.output().path).astype(np.float32))
+            openpose_data = np.load(openpose_file_path)
+            for frame, all_faces in openpose_data.item().items():
+                all_faces = all_faces.astype(np.float32)
+                # all_faces = normalize_landmkarks(all_faces)
+                if len(all_faces) > total_frames:
+                    data_len = len(all_faces)
+                    for i in range(data_len):
+                        # if i >= n_prev_frames and i+frames < data_len:
+                        first_frame = frame + i
+                        if (
+                            first_frame + total_frames < data_len
+                            and (
+                                (
+                                    (first_frame + total_frames)
+                                    * (1.0 / 30.0)
+                                    / ac.hop_duration
+                                )
+                                + 32
+                            )
+                            < self.all_autocorrs[-1].shape[0]
+                        ):
+                            face = all_faces[i : i + total_frames].reshape(-1, 140)
+
+                            # autocorrelations = np.empty((0, 64, 32), dtype=np.float32)
+                            autocorrelations = []
+
+                            for n in range(total_frames):
+                                first_time = round(
+                                    (first_frame + n) * (1.0 / 30.0) / ac.hop_duration
+                                )
+
+                                autocorrelations.append(
+                                    (
+                                        len(self.all_autocorrs) - 1,
+                                        first_time - 32,
+                                        first_time + 32,
+                                    )
+                                )
+                            if (
+                                face.shape[0] == total_frames
+                                and len(autocorrelations) == total_frames
+                            ):
+                                assert face.dtype == np.float32
+                                self.data.append(
+                                    [face, autocorrelations, (first_frame, filepath)]
+                                )
+
+
 if __name__ == "__main__":
     import cv2
+
     celeba = CelebADataset("/home/chaiyujin/Downloads/Dataset/CelebA")
     d = celeba[0]
     print(d["x"].size())
