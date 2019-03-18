@@ -20,14 +20,13 @@ if __name__ == "__main__":
     assert dataset in vision.Datasets, "`{}` is not supported, use `{}`".format(
         dataset, vision.Datasets.keys()
     )
-    assert os.path.exists(
-        dataset_root
-    ), "Failed to find root dir `{}` of dataset.".format(dataset_root)
+    #assert os.path.exists(
+    #    dataset_root
+    #), "Failed to find root dir `{}` of dataset.".format(dataset_root)
     assert os.path.exists(hparams), "Failed to find hparams josn `{}`".format(hparams)
     hparams = JsonConfig(hparams)
     dataset = vision.Datasets[dataset]
     print(dataset)
-    exit
     # set transform of dataset
     transform = transforms.Compose(
         [

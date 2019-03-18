@@ -1,6 +1,8 @@
+import glob
 import os
-from os.path import basename
 import re
+from os.path import basename
+
 import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
@@ -8,6 +10,7 @@ from torchvision import transforms
 
 from luigi_pipeline.audio_processing import Autocorrelation, MelSpectrogram
 from luigi_pipeline.post_process_openpose import PostProcessOpenpose
+from sklearn.decomposition import PCA
 from tqdm import tqdm
 
 IMAGE_EXTENSTOINS = [".png", ".jpg", ".jpeg", ".bmp"]
@@ -85,62 +88,59 @@ class CelebADataset(Dataset):
         return len(self.data)
 
 
-class Text2FaceDataset(Dataset):
-    def __init__(self, dataset_files, total_frames=140, data_dir=None):
+class Speech2FaceDataset(Dataset):
+    def __init__(
+        self, dataset_files=None, transform=None, total_frames=64, data_dir=None
+    ):
+        data_dir = "/projects/text2face/data2"
+        dataset_files = list(
+            glob.glob(
+                PostProcessOpenpose(data_dir=data_dir, yt_video_id="*").output().path
+            )
+        )
+        dataset_files = dataset_files[:9]
         self.data = []
-        self.all_autocorrs = []
+        pca_data = []
+        for n, openpose_file_path in enumerate(
+            tqdm(dataset_files, desc="Preparing PCA")
+        ):
+            filepath = basename(openpose_file_path).replace(".npy", "")
+            openpose_data = np.load(openpose_file_path)
+
+            # do PCA
+            for frame, all_faces in openpose_data.item().items():
+                all_faces = all_faces.astype(np.float32)
+                for face in all_faces:
+                    pca_data.append(face.reshape(140))
+
+        pca = PCA(total_frames)
+
+        data = np.array(pca_data)
+        self.pca = pca.fit(data)
         for n, openpose_file_path in enumerate(
             tqdm(dataset_files, desc="Loading dataset. Sit back and relax")
         ):
-            filepath = basename(openpose_file_path).replace(".npy", "")
-            ac = Autocorrelation(data_dir=data_dir, yt_video_id=filepath)
-            self.all_autocorrs.append(np.load(ac.output().path).astype(np.float32))
-            openpose_data = np.load(openpose_file_path)
             for frame, all_faces in openpose_data.item().items():
                 all_faces = all_faces.astype(np.float32)
-                # all_faces = normalize_landmkarks(all_faces)
                 if len(all_faces) > total_frames:
                     data_len = len(all_faces)
                     for i in range(data_len):
-                        # if i >= n_prev_frames and i+frames < data_len:
                         first_frame = frame + i
-                        if (
-                            first_frame + total_frames < data_len
-                            and (
-                                (
-                                    (first_frame + total_frames)
-                                    * (1.0 / 30.0)
-                                    / ac.hop_duration
-                                )
-                                + 32
-                            )
-                            < self.all_autocorrs[-1].shape[0]
-                        ):
-                            face = all_faces[i : i + total_frames].reshape(-1, 140)
+                        if first_frame + total_frames < data_len:
+                            face = all_faces[i : i + total_frames]
+                            pca_face = self.pca.transform(face.reshape(-1, 140))
 
-                            # autocorrelations = np.empty((0, 64, 32), dtype=np.float32)
-                            autocorrelations = []
+                            face = pca_face.reshape(total_frames, total_frames, 1)
 
-                            for n in range(total_frames):
-                                first_time = round(
-                                    (first_frame + n) * (1.0 / 30.0) / ac.hop_duration
-                                )
-
-                                autocorrelations.append(
-                                    (
-                                        len(self.all_autocorrs) - 1,
-                                        first_time - 32,
-                                        first_time + 32,
-                                    )
-                                )
-                            if (
-                                face.shape[0] == total_frames
-                                and len(autocorrelations) == total_frames
-                            ):
+                            if face.shape[1] == total_frames:
                                 assert face.dtype == np.float32
-                                self.data.append(
-                                    [face, autocorrelations, (first_frame, filepath)]
-                                )
+                                self.data.append(face)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        return {"x": self.data[index], "y": 1}
 
 
 if __name__ == "__main__":

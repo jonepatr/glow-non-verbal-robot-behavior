@@ -3,7 +3,7 @@
         "log_root": "results/speech2face"
     },
     "Glow" : {
-        "image_shape": [140, 140, 1],
+        "image_shape": [64, 64, 1],
         "hidden_channels": 512,
         "K": 32,
         "L": 3,
@@ -16,7 +16,7 @@
         "y_classes": 40
     },
     "Criterion" : {
-        "y_condition": "multi-classes"
+        "y_condition": "single-class"
     },
     "Data" : {
         "center_crop": 160,
@@ -38,11 +38,11 @@
         }
     },
     "Device": {
-        "glow": ["cuda:0", "cuda:1", "cuda:2", "cuda:3"],
-        "data": "cuda:0"
+        "glow": ["cuda:4", "cuda:5", "cuda:6", "cuda:7"],
+        "data": "cuda:4"
     },
     "Train": {
-        "batch_size": 12,
+        "batch_size": 72,
         "num_batches": 1000000,
         "max_grad_clip": 5,
         "max_grad_norm": 100,

@@ -11,6 +11,9 @@ from .utils import save, load, plot_prob
 from .config import JsonConfig
 from .models import Glow
 from . import thops
+import matplotlib.pyplot as plt
+from Speech2Face import utils
+from os.path import join
 
 
 class Trainer(object):
@@ -160,6 +163,7 @@ class Trainer(object):
                                                   self.y_classes)
                         y_true = y_onehot
                     for bi in range(min([len(img), 4])):
+
                         self.writer.add_image("0_reverse/{}".format(bi), torch.cat((img[bi], batch["x"][bi]), dim=1), self.global_step)
                         if self.y_condition:
                             self.writer.add_image("1_prob/{}".format(bi), plot_prob([y_pred[bi], y_true[bi]], ["pred", "true"]), self.global_step)
@@ -167,7 +171,19 @@ class Trainer(object):
                 # inference
                 if hasattr(self, "inference_gap"):
                     if self.global_step % self.inference_gap == 0:
-                        img = self.graph(z=None, y_onehot=y_onehot, eps_std=0.5, reverse=True)
+                        for ci in range(min([len(img), 2])):
+
+                            img = self.graph(z=None, y_onehot=y_onehot, eps_std=0.5, reverse=True)
+
+                            zzzz = self.data_loader.dataset.pca.inverse_transform(img[0,0].cpu().detach().numpy()).reshape(-1, 70, 2)
+
+                            new_path = join(
+                                self.writer.log_dir,
+                                "samples",
+                                f"{str(self.global_step).zfill(7)}-{ci}.mp4",
+                            )
+                            utils.save_video_without_reference(zzzz, new_path)
+                            self.writer.add_text(f"video {ci}", 'http://130.237.67.85:5005/runs/' + self.writer.log_dir + f"/samples/{str(self.global_step).zfill(7)}-{ci}.mp4", self.global_step) 
                         # img = torch.clamp(img, min=0, max=1.0)
                         for bi in range(min([len(img), 4])):
                             self.writer.add_image("2_sample/{}".format(bi), img[bi], self.global_step)
