@@ -172,7 +172,7 @@ class Conv2dZeros(nn.Conv2d):
         self,
         in_channels,
         out_channels,
-        kernel_size=[3, 3],
+        kernel_size=[3, 1],
         stride=[1, 1],
         padding="same",
         logscale_factor=3,
@@ -325,6 +325,7 @@ class Split2d(nn.Module):
         self.conv = Conv2dZeros(num_channels // 2, num_channels)
 
     def split2d_prior(self, z):
+
         h = self.conv(z)
         return thops.split_feature(h, "cross")
 
@@ -369,9 +370,9 @@ def unsqueeze2d(input, factor=2):
     H = size[2]
     W = size[3]
     assert C % (factor2) == 0, "{}".format(C)
-    x = input.view(B, C // factor2, factor, factor, H, W)
+    x = input.view(B, C // factor, factor, 1, H, W)
     x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
-    x = x.view(B, C // (factor2), H * factor, W * factor)
+    x = x.view(B, C // factor, H * factor, W * 1)
     return x
 
 

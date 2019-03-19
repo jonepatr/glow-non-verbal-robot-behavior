@@ -1,18 +1,21 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 from tqdm import tqdm
-from . import thops
-from . import modules
-from . import utils
+
+from . import modules, thops, utils
 
 
 def f(in_channels, out_channels, hidden_channels):
     return nn.Sequential(
-        modules.Conv2d(in_channels, hidden_channels), nn.ReLU(inplace=False),
-        modules.Conv2d(hidden_channels, hidden_channels, kernel_size=[1, 1]), nn.ReLU(inplace=False),
-        modules.Conv2dZeros(hidden_channels, out_channels))
+        modules.Conv2d(in_channels, hidden_channels),
+        nn.ReLU(inplace=False),
+        modules.Conv2d(hidden_channels, hidden_channels, kernel_size=[1, 1]),
+        nn.ReLU(inplace=False),
+        modules.Conv2dZeros(hidden_channels, out_channels),
+    )
 
 
 class FlowStep(nn.Module):
@@ -20,20 +23,25 @@ class FlowStep(nn.Module):
     FlowPermutation = {
         "reverse": lambda obj, z, logdet, rev: (obj.reverse(z, rev), logdet),
         "shuffle": lambda obj, z, logdet, rev: (obj.shuffle(z, rev), logdet),
-        "invconv": lambda obj, z, logdet, rev: obj.invconv(z, logdet, rev)
+        "invconv": lambda obj, z, logdet, rev: obj.invconv(z, logdet, rev),
     }
 
-    def __init__(self, in_channels, hidden_channels,
-                 actnorm_scale=1.0,
-                 flow_permutation="invconv",
-                 flow_coupling="additive",
-                 LU_decomposed=False):
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels,
+        actnorm_scale=1.0,
+        flow_permutation="invconv",
+        flow_coupling="additive",
+        LU_decomposed=False,
+    ):
         # check configures
-        assert flow_coupling in FlowStep.FlowCoupling,\
-            "flow_coupling should be in `{}`".format(FlowStep.FlowCoupling)
-        assert flow_permutation in FlowStep.FlowPermutation,\
-            "float_permutation should be in `{}`".format(
-                FlowStep.FlowPermutation.keys())
+        assert (
+            flow_coupling in FlowStep.FlowCoupling
+        ), "flow_coupling should be in `{}`".format(FlowStep.FlowCoupling)
+        assert (
+            flow_permutation in FlowStep.FlowPermutation
+        ), "float_permutation should be in `{}`".format(FlowStep.FlowPermutation.keys())
         super().__init__()
         self.flow_permutation = flow_permutation
         self.flow_coupling = flow_coupling
@@ -42,7 +50,8 @@ class FlowStep(nn.Module):
         # 2. permute
         if flow_permutation == "invconv":
             self.invconv = modules.InvertibleConv1x1(
-                in_channels, LU_decomposed=LU_decomposed)
+                in_channels, LU_decomposed=LU_decomposed
+            )
         elif flow_permutation == "shuffle":
             self.shuffle = modules.Permute2d(in_channels, shuffle=True)
         else:
@@ -65,7 +74,8 @@ class FlowStep(nn.Module):
         z, logdet = self.actnorm(input, logdet=logdet, reverse=False)
         # 2. permute
         z, logdet = FlowStep.FlowPermutation[self.flow_permutation](
-            self, z, logdet, False)
+            self, z, logdet, False
+        )
         # 3. coupling
         z1, z2 = thops.split_feature(z, "split")
         if self.flow_coupling == "additive":
@@ -73,7 +83,7 @@ class FlowStep(nn.Module):
         elif self.flow_coupling == "affine":
             h = self.f(z1)
             shift, scale = thops.split_feature(h, "cross")
-            scale = torch.sigmoid(scale + 2.)
+            scale = torch.sigmoid(scale + 2.0)
             z2 = z2 + shift
             z2 = z2 * scale
             logdet = thops.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
@@ -89,25 +99,32 @@ class FlowStep(nn.Module):
         elif self.flow_coupling == "affine":
             h = self.f(z1)
             shift, scale = thops.split_feature(h, "cross")
-            scale = torch.sigmoid(scale + 2.)
+            scale = torch.sigmoid(scale + 2.0)
             z2 = z2 / scale
             z2 = z2 - shift
             logdet = -thops.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
         z = thops.cat_feature(z1, z2)
         # 2. permute
         z, logdet = FlowStep.FlowPermutation[self.flow_permutation](
-            self, z, logdet, True)
+            self, z, logdet, True
+        )
         # 3. actnorm
         z, logdet = self.actnorm(z, logdet=logdet, reverse=True)
         return z, logdet
 
 
 class FlowNet(nn.Module):
-    def __init__(self, image_shape, hidden_channels, K, L,
-                 actnorm_scale=1.0,
-                 flow_permutation="invconv",
-                 flow_coupling="additive",
-                 LU_decomposed=False):
+    def __init__(
+        self,
+        image_shape,
+        hidden_channels,
+        K,
+        L,
+        actnorm_scale=1.0,
+        flow_permutation="invconv",
+        flow_coupling="additive",
+        LU_decomposed=False,
+    ):
         """
                              K                                      K
         --> [Squeeze] -> [FlowStep] -> [Split] -> [Squeeze] -> [FlowStep]
@@ -121,31 +138,32 @@ class FlowNet(nn.Module):
         self.K = K
         self.L = L
         H, W, C = image_shape
-        assert C == 1 or C == 3, ("image_shape should be HWC, like (64, 64, 3)"
-                                  "C == 1 or C == 3")
         for i in range(L):
             # 1. Squeeze
-            C, H, W = C * 4, H // 2, W // 2
+            C, H, W = C * 2, H // 2, W
             self.layers.append(modules.SqueezeLayer(factor=2))
             self.output_shapes.append([-1, C, H, W])
             # 2. K FlowStep
             for _ in range(K):
                 self.layers.append(
-                    FlowStep(in_channels=C,
-                             hidden_channels=hidden_channels,
-                             actnorm_scale=actnorm_scale,
-                             flow_permutation=flow_permutation,
-                             flow_coupling=flow_coupling,
-                             LU_decomposed=LU_decomposed))
-                self.output_shapes.append(
-                    [-1, C, H, W])
+                    FlowStep(
+                        in_channels=C,
+                        hidden_channels=hidden_channels,
+                        actnorm_scale=actnorm_scale,
+                        flow_permutation=flow_permutation,
+                        flow_coupling=flow_coupling,
+                        LU_decomposed=LU_decomposed,
+                    )
+                )
+                self.output_shapes.append([-1, C, H, W])
             # 3. Split2d
             if i < L - 1:
                 self.layers.append(modules.Split2d(num_channels=C))
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
 
-    def forward(self, input, logdet=0., reverse=False, eps_std=None):
+    def forward(self, input, logdet=0.0, reverse=False, eps_std=None):
+
         if not reverse:
             return self.encode(input, logdet)
         else:
@@ -171,14 +189,16 @@ class Glow(nn.Module):
 
     def __init__(self, hparams):
         super().__init__()
-        self.flow = FlowNet(image_shape=hparams.Glow.image_shape,
-                            hidden_channels=hparams.Glow.hidden_channels,
-                            K=hparams.Glow.K,
-                            L=hparams.Glow.L,
-                            actnorm_scale=hparams.Glow.actnorm_scale,
-                            flow_permutation=hparams.Glow.flow_permutation,
-                            flow_coupling=hparams.Glow.flow_coupling,
-                            LU_decomposed=hparams.Glow.LU_decomposed)
+        self.flow = FlowNet(
+            image_shape=hparams.Glow.image_shape,
+            hidden_channels=hparams.Glow.hidden_channels,
+            K=hparams.Glow.K,
+            L=hparams.Glow.L,
+            actnorm_scale=hparams.Glow.actnorm_scale,
+            flow_permutation=hparams.Glow.flow_permutation,
+            flow_coupling=hparams.Glow.flow_coupling,
+            LU_decomposed=hparams.Glow.LU_decomposed,
+        )
         self.hparams = hparams
         self.y_classes = hparams.Glow.y_classes
         # for prior
@@ -187,19 +207,24 @@ class Glow(nn.Module):
             self.learn_top = modules.Conv2dZeros(C * 2, C * 2)
         if hparams.Glow.y_condition:
             C = self.flow.output_shapes[-1][1]
-            self.project_ycond = modules.LinearZeros(
-                hparams.Glow.y_classes, 2 * C)
-            self.project_class = modules.LinearZeros(
-                C, hparams.Glow.y_classes)
+            self.project_ycond = modules.LinearZeros(hparams.Glow.y_classes, 2 * C)
+            self.project_class = modules.LinearZeros(C, hparams.Glow.y_classes)
         # register prior hidden
         num_device = len(utils.get_proper_device(hparams.Device.glow, False))
         assert hparams.Train.batch_size % num_device == 0
         self.register_parameter(
             "prior_h",
-            nn.Parameter(torch.zeros([hparams.Train.batch_size // num_device,
-                                      self.flow.output_shapes[-1][1] * 2,
-                                      self.flow.output_shapes[-1][2],
-                                      self.flow.output_shapes[-1][3]])))
+            nn.Parameter(
+                torch.zeros(
+                    [
+                        hparams.Train.batch_size // num_device,
+                        self.flow.output_shapes[-1][1] * 2,
+                        self.flow.output_shapes[-1][2],
+                        self.flow.output_shapes[-1][3],
+                    ]
+                )
+            ),
+        )
 
     def prior(self, y_onehot=None):
         B, C = self.prior_h.size(0), self.prior_h.size(1)
@@ -213,8 +238,7 @@ class Glow(nn.Module):
             h += yp
         return thops.split_feature(h, "split")
 
-    def forward(self, x=None, y_onehot=None, z=None,
-                eps_std=None, reverse=False):
+    def forward(self, x=None, y_onehot=None, z=None, eps_std=None, reverse=False):
         if not reverse:
             return self.normal_flow(x, y_onehot)
         else:
@@ -222,14 +246,16 @@ class Glow(nn.Module):
 
     def normal_flow(self, x, y_onehot):
         pixels = thops.pixels(x)
-        z = x + torch.normal(mean=torch.zeros_like(x),
-                             std=torch.ones_like(x) * (1. / 256.))
+        z = x + torch.normal(
+            mean=torch.zeros_like(x), std=torch.ones_like(x) * (1.0 / 256.0)
+        )
         logdet = torch.zeros_like(x[:, 0, 0, 0])
-        logdet += float(-np.log(256.) * pixels)
+        logdet += float(-np.log(256.0) * pixels)
         # encode
         z, objective = self.flow(z, logdet=logdet, reverse=False)
         # prior
         mean, logs = self.prior(y_onehot)
+
         objective += modules.GaussianDiag.logp(mean, logs, z)
 
         if self.hparams.Glow.y_condition:
@@ -238,7 +264,7 @@ class Glow(nn.Module):
             y_logits = None
 
         # return
-        nll = (-objective) / float(np.log(2.) * pixels)
+        nll = (-objective) / float(np.log(2.0) * pixels)
         return z, nll, y_logits
 
     def reverse_flow(self, z, y_onehot, eps_std):
@@ -251,14 +277,14 @@ class Glow(nn.Module):
 
     def set_actnorm_init(self, inited=True):
         for name, m in self.named_modules():
-            if (m.__class__.__name__.find("ActNorm") >= 0):
+            if m.__class__.__name__.find("ActNorm") >= 0:
                 m.inited = inited
 
     def generate_z(self, img):
         self.eval()
         B = self.hparams.Train.batch_size
         x = img.unsqueeze(0).repeat(B, 1, 1, 1).cuda()
-        z,_, _ = self(x)
+        z, _, _ = self(x)
         self.train()
         return z[0].detach().cpu().numpy()
 
