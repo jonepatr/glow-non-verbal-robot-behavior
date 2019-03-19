@@ -98,7 +98,7 @@ class Speech2FaceDataset(Dataset):
                 PostProcessOpenpose(data_dir=data_dir, yt_video_id="*").output().path
             )
         )
-        # dataset_files = dataset_files[:6]
+        dataset_files = dataset_files[:6]
         self.data = []
         pca_data = []
         for n, openpose_file_path in enumerate(
