@@ -3,10 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from glow.conditioning import DeepSpeechEncoder, EncoderHead
 from tqdm import tqdm
 
 from . import modules, thops, utils
-from conditioning import DeepSpeechEncoder, EncoderHead
 
 
 class f(nn.Module):
@@ -115,12 +115,12 @@ class FlowStep(nn.Module):
         elif flow_coupling == "affine":
             # self.f = f(in_channels // 2, in_channels, hidden_channels, cond_channels)
             self.f = EncoderHead(
-                    in_channels=in_channels // 2,
-                    out_channels=in_channels,
-                    hidden_channels=hidden_channels,
-                    condition_input=condition_input,
-                    timesteps=timesteps
-                    )
+                in_channels=in_channels // 2,
+                out_channels=in_channels,
+                hidden_channels=hidden_channels,
+                condition_input=condition_input,
+                timesteps=timesteps,
+            )
 
     def forward(self, input_, audio_features, logdet=None, reverse=False):
         if not reverse:
@@ -214,7 +214,6 @@ class FlowNet(nn.Module):
                 self.layers.append(
                     FlowStep(
                         in_channels=C,
-                        timesteps=H,
                         hidden_channels=hidden_channels,
                         actnorm_scale=actnorm_scale,
                         flow_permutation=flow_permutation,
@@ -223,7 +222,8 @@ class FlowNet(nn.Module):
                         L=l,
                         K=k,
                         condition_input=self.conditionNet.out_size,
-                        timesteps=H)
+                        timesteps=H,
+                    )
                 )
                 self.output_shapes.append([-1, C, H, W])
             # 3. Split2d
@@ -274,7 +274,8 @@ class Glow(nn.Module):
             flow_permutation=hparams.Glow.flow_permutation,
             flow_coupling=hparams.Glow.flow_coupling,
             LU_decomposed=hparams.Glow.LU_decomposed,
-            cond_channels=hparams.Glow.cond_channels,
+            spec_frames=hparams.Glow.spec_frames,
+            n_mels=hparams.Glow.n_mels,
         )
         self.hparams = hparams
         self.y_classes = hparams.Glow.y_classes

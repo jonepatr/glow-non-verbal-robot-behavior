@@ -5,7 +5,7 @@
     },
     "Glow" : {
         "image_shape": [64, 1, 140],
-        "spec_frames": 40,
+        "spec_frames": 213,
         "n_mels": 80,
         "hidden_channels": 512,
         "cond_channels": 64,
@@ -28,7 +28,7 @@
     "Data" : {
         "center_crop": 160,
         "resize": 64,
-        "small": true,
+        "small": false,
         "audio_feature_type": "spectrogram"
     },
     "Optim": {

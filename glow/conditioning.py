@@ -1,14 +1,15 @@
 import torch
 import torch.nn as nn
+
 import glow.modules as modules
 
 
 class DeepSpeechEncoder(nn.Module):
     """
-    First layers for DeepSpeech2: 
+    First layers for DeepSpeech2:
         https://arxiv.org/pdf/1512.02595.pdf
 
-    The code is rewritten based on: 
+    The code is rewritten based on:
         https://github.com/SeanNaren/deepspeech.pytorch
 
     Output:     Last hidden state of RNN
@@ -16,7 +17,7 @@ class DeepSpeechEncoder(nn.Module):
 
     def __init__(
         self,
-        input_shape=(1, 1, 64 * 11, 80),
+        input_shape=(1, 1, 213, 80),
         kernel_size=[(41, 11), (21, 11)],
         stride=[(2, 2), (2, 1)],
         padding=[(20, 5), (10, 5)],
@@ -80,7 +81,7 @@ class DeepSpeechEncoder(nn.Module):
         return self.conv(x).shape
 
     def forward(self, x):
-        z = self.conv(x)
+        z = self.conv(x.unsqueeze(1))
         z = z.permute(
             0, 2, 1, 3
         )  # -> (B, N, channels, Feats): get feature dims to the right (spec values and channels)
