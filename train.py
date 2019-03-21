@@ -6,7 +6,7 @@ from docopt import docopt
 from glow.builder import build
 from glow.config import JsonConfig
 from glow.trainer import Trainer
-from vision.datasets.celeba import Speech2FaceDataset
+from glow.dataset import Speech2FaceDataset
 
 """Train script.
 

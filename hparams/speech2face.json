@@ -47,9 +47,9 @@
         }
     },
     "Device": {
-        "glow": ["cuda:1", "cuda:2", "cuda:3", "cuda:4", "cuda:5", "cuda:6", "cuda:7"],
+        "glow": ["cuda:6", "cuda:7"],
         "glow_small": ["cuda:1"],
-        "data": "cuda:1"
+        "data": "cuda:6"
     },
     "Train": {
         "batch_size": 140,
