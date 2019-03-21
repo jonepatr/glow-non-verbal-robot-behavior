@@ -267,6 +267,10 @@ class Trainer(object):
                     if self.global_step % self.inference_gap == 0:
                         for ci in range(min([len(img), 2])):
 
+                            # sample_z = torch.normal(
+                            #     mean=torch.zeros_like(batch['x']), std=torch.ones_like(logs) * 0.5
+                            # )
+
                             img = self.graph(
                                 z=None,
                                 audio_features=batch["audio_features"],
