@@ -18,6 +18,8 @@ from .config import JsonConfig
 from .models import Glow
 from .utils import load, plot_prob, save
 
+# torch.set_num_threads(1)
+
 
 def fix_img(img):
     img -= img.min()
@@ -77,9 +79,10 @@ class Trainer(object):
         self.data_loader = DataLoader(
             dataset,
             batch_size=self.batch_size,
-            #   num_workers=8,
+            # num_workers=20,
             shuffle=True,
             drop_last=True,
+            pin_memory=True,
         )
         self.n_epoches = hparams.Train.num_batches + len(self.data_loader) - 1
         self.n_epoches = self.n_epoches // len(self.data_loader)
@@ -104,6 +107,7 @@ class Trainer(object):
         self.scalar_log_gaps = hparams.Train.scalar_log_gap
         self.plot_gaps = hparams.Train.plot_gap
         self.inference_gap = hparams.Train.inference_gap
+        self.video_url = hparams.Misc.video_url
 
     def train(self):
         # set to training state
@@ -125,8 +129,12 @@ class Trainer(object):
                     self.writer.add_scalar("lr/lr", lr, self.global_step)
                 # get batch data
                 for k in batch:
-                    batch[k] = batch[k].to(self.data_device)
+                    try:
+                        batch[k] = batch[k].to(self.data_device)
+                    except AttributeError:
+                        pass
                 x = batch["x"]
+
                 y = None
                 y_onehot = None
                 if self.y_condition:
@@ -146,6 +154,9 @@ class Trainer(object):
                 if self.global_step == 0:
                     self.graph(
                         x[: self.batch_size // len(self.devices), ...],
+                        batch["audio_features"][
+                            : self.batch_size // len(self.devices), ...
+                        ],
                         y_onehot[: self.batch_size // len(self.devices), ...]
                         if y_onehot is not None
                         else None,
@@ -156,8 +167,11 @@ class Trainer(object):
                     self.graph = torch.nn.parallel.DataParallel(
                         self.graph, self.devices, self.devices[0]
                     )
+
                 # forward phase
-                z, nll, y_logits = self.graph(x=x, y_onehot=y_onehot)
+                z, nll, y_logits = self.graph(
+                    x=x, audio_features=batch["audio_features"], y_onehot=y_onehot
+                )
 
                 # loss
                 loss_generative = Glow.loss_generative(nll)
@@ -212,9 +226,13 @@ class Trainer(object):
                         max_checkpoints=self.max_checkpoints,
                     )
                 if self.global_step % self.plot_gaps == 0:
-                    img = self.graph(z=z, y_onehot=y_onehot, reverse=True)
-                    print("Trainer: result", img.shape)
-                    img = img.permute(0, 3, 2, 1)
+                    img = self.graph(
+                        z=z,
+                        audio_features=batch["audio_features"],
+                        y_onehot=y_onehot,
+                        reverse=True,
+                    )
+                    # img = img.permute(0, 3, 2, 1)
                     # img = torch.clamp(img, min=0, max=1.0)
                     if self.y_condition:
                         if self.y_criterion == "multi-classes":
@@ -228,14 +246,13 @@ class Trainer(object):
                             )
                         y_true = y_onehot
                     for bi in range(min([len(img), 4])):
+                        new_img = torch.cat((img[bi], batch["x"][bi]), dim=0).permute(
+                            2, 0, 1
+                        )
 
                         self.writer.add_image(
                             "0_reverse/{}".format(bi),
-                            fix_img(
-                                torch.cat(
-                                    (img[bi], batch["x"][bi].permute(2, 1, 0)), dim=1
-                                )
-                            ),
+                            fix_img(new_img),
                             self.global_step,
                         )
                         if self.y_condition:
@@ -251,28 +268,42 @@ class Trainer(object):
                         for ci in range(min([len(img), 2])):
 
                             img = self.graph(
-                                z=None, y_onehot=y_onehot, eps_std=0.5, reverse=True
+                                z=None,
+                                audio_features=batch["audio_features"],
+                                y_onehot=y_onehot,
+                                eps_std=0.5,
+                                reverse=True,
                             )
                             # Batch, 1 , Time , Feaures
-                            img = img.permute(0, 3, 2, 1)
+                            # img = img
 
-                            zzzz = self.data_loader.dataset.pca.inverse_transform(
-                                img[0, 0].cpu().detach().numpy()
-                            ).reshape(-1, 70, 2)
+                            # zzzz = self.data_loader.dataset.pca.inverse_transform(
+                            #     img[0, 0].cpu().detach().numpy()
+                            # ).reshape(-1, 70, 2)
 
-                            #self.writer.add_video(
+                            # self.writer.add_video(
                             #    "new_video", vid_tensor=v_np, fps=30, global_step=self.global_step
-                            #)  # , self.global_step
+                            # )  # , self.global_step
 
                             new_path = join(
                                 self.writer.log_dir,
                                 "samples",
                                 f"{str(self.global_step).zfill(7)}-{ci}.mp4",
                             )
-                            utils.save_video_without_reference(zzzz, new_path)
+                            utils.save_video_with_audio_reference(
+                                img[0]
+                                .cpu()
+                                .detach()
+                                .numpy()
+                                .transpose(1, 0, 2)
+                                .reshape(64, 70, 2),
+                                new_path,
+                                batch["audio_path"][0],
+                                batch["first_frame"][0],
+                            )
                             self.writer.add_text(
                                 f"video {ci}",
-                                "http://130.237.67.85:5005/runs/"
+                                self.video_url
                                 + self.writer.log_dir
                                 + f"/samples/{str(self.global_step).zfill(7)}-{ci}.mp4",
                                 self.global_step,
@@ -281,7 +312,7 @@ class Trainer(object):
                         for bi in range(min([len(img), 4])):
                             self.writer.add_image(
                                 "2_sample/{}".format(bi),
-                                fix_img(img[bi]),
+                                fix_img(img[bi].permute(2, 0, 1)),
                                 self.global_step,
                             )
 
@@ -291,4 +322,5 @@ class Trainer(object):
         self.writer.export_scalars_to_json(
             os.path.join(self.log_dir, "all_scalars.json")
         )
+        self.writer.close()
         self.writer.close()

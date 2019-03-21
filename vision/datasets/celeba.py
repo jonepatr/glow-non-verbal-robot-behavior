@@ -10,6 +10,7 @@ from torchvision import transforms
 
 from luigi_pipeline.audio_processing import Autocorrelation, MelSpectrogram
 from luigi_pipeline.post_process_openpose import PostProcessOpenpose
+from luigi_pipeline.youtube_downloader import DownloadYoutubeAudio
 from sklearn.decomposition import PCA
 from tqdm import tqdm
 
@@ -90,36 +91,28 @@ class CelebADataset(Dataset):
 
 class Speech2FaceDataset(Dataset):
     def __init__(
-        self, dataset_files=None, transform=None, total_frames=64, data_dir=None
+        self, data_dir=None, total_frames=None, small=None, audio_feature_type=None
     ):
-        data_dir = "/projects/text2face/data2"
         dataset_files = list(
             glob.glob(
                 PostProcessOpenpose(data_dir=data_dir, yt_video_id="*").output().path
             )
         )
-        dataset_files = dataset_files[:6]
+        if small:
+            dataset_files = dataset_files[:40]
         self.data = []
-        pca_data = []
-        for n, openpose_file_path in enumerate(
-            tqdm(dataset_files, desc="Preparing PCA")
-        ):
-            filepath = basename(openpose_file_path).replace(".npy", "")
-            openpose_data = np.load(openpose_file_path)
 
-            # do PCA
-            for frame, all_faces in openpose_data.item().items():
-                all_faces = all_faces.astype(np.float32)
-                for face in all_faces:
-                    pca_data.append(face.reshape(140))
-
-        pca = PCA(total_frames)
-
-        data = np.array(pca_data)
-        self.pca = pca.fit(data)
         for n, openpose_file_path in enumerate(
             tqdm(dataset_files, desc="Loading dataset. Sit back and relax")
         ):
+            filepath = basename(openpose_file_path).replace(".npy", "")
+            if audio_feature_type == "spectrogram":
+                ms = MelSpectrogram(data_dir=data_dir, yt_video_id=filepath)
+                audio_feature_data = np.load(ms.output().path).astype(np.float32)
+
+            audio = DownloadYoutubeAudio(data_dir=data_dir, yt_video_id=filepath)
+
+            openpose_data = np.load(openpose_file_path)
             for frame, all_faces in openpose_data.item().items():
                 all_faces = all_faces.astype(np.float32)
                 if len(all_faces) > total_frames:
@@ -127,20 +120,72 @@ class Speech2FaceDataset(Dataset):
                     for i in range(data_len):
                         first_frame = frame + i
                         if first_frame + total_frames < data_len:
-                            face = all_faces[i : i + total_frames]
-                            pca_face = self.pca.transform(face.reshape(-1, 140))
 
-                            face = pca_face.reshape(total_frames, total_frames, 1)
+                            face = (
+                                all_faces[i : i + total_frames]
+                                .reshape(-1, 140, 1)
+                                .transpose(1, 0, 2)
+                            )
+                            stack_of_audio_features = []
 
-                            if face.shape[1] == total_frames:
+                            for n in range(total_frames):
+                                first_time = round((first_frame + n) * (1.0 / 30.0))
+                                stack_of_audio_features.append(
+                                    audio_feature_data[
+                                        int(
+                                            (first_time - 0.26) // ms.hop_duration
+                                        ) : int((first_time + 0.26) // ms.hop_duration)
+                                    ]
+                                )
+                            # print(stack_of_audio_features)
+                            audio_features = np.array(stack_of_audio_features).reshape(
+                                total_frames, -1
+                            )
+
+                            if (
+                                face.shape[1]
+                                == total_frames
+                                # and audio_features.shape[0] == total_frames
+                            ):
                                 assert face.dtype == np.float32
-                                self.data.append(face)
+                                self.data.append(
+                                    (
+                                        face,
+                                        audio_features,
+                                        first_frame,
+                                        audio.output().path,
+                                    )
+                                )
+
+    def prepare_pca(self, dataset_files, pca_dimensions):
+        pca = PCA(pca_dimensions)
+
+        pca_data = []
+        for n, openpose_file_path in enumerate(
+            tqdm(dataset_files, desc="Preparing PCA")
+        ):
+            openpose_data = np.load(openpose_file_path)
+
+            # do PCA
+            for frame, all_faces in openpose_data.item().items():
+                all_faces = all_faces.astype(np.float32)
+                for face in all_faces:
+                    pca_data.append(face.reshape(140))
+        data = np.array(pca_data)
+        self.pca = pca.fit(data)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, index):
-        return {"x": self.data[index], "y": 1}
+        face, audio_features, first_frame, audio_path, = self.data[index]
+        return {
+            "x": face,
+            "audio_features": audio_features,
+            "first_frame": first_frame,
+            "audio_path": audio_path,
+            "y": 1,
+        }
 
 
 if __name__ == "__main__":
