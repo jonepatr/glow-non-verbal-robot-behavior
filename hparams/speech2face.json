@@ -5,6 +5,8 @@
     },
     "Glow" : {
         "image_shape": [64, 1, 140],
+        "spec_frames": 40,
+        "n_mels": 80,
         "hidden_channels": 512,
         "cond_channels": 64,
         "K": 32,

@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from . import modules, thops, utils
+from conditioning import DeepSpeechEncoder, EncoderHead
 
 
 class f(nn.Module):
@@ -69,19 +70,33 @@ class FlowStep(nn.Module):
         flow_coupling="additive",
         LU_decomposed=False,
         cond_channels=None,
+        L=1,
+        K=1,
+        condition_input=256,
+        timesteps=1,
     ):
         # check configures
         assert (
             flow_coupling in FlowStep.FlowCoupling
         ), "flow_coupling should be in `{}`".format(FlowStep.FlowCoupling)
+
         assert (
             flow_permutation in FlowStep.FlowPermutation
         ), "float_permutation should be in `{}`".format(FlowStep.FlowPermutation.keys())
+
         super().__init__()
+
         self.flow_permutation = flow_permutation
         self.flow_coupling = flow_coupling
+
+        # Custom
+        self.L = L  # Which multiscale layer this module is in
+        self.K = K  # Which step of flow in self.L
+        self.condition_input = condition_input
+
         # 1. actnorm
         self.actnorm = modules.ActNorm2d(in_channels, actnorm_scale)
+
         # 2. permute
         if flow_permutation == "invconv":
             self.invconv = modules.InvertibleConv1x1(
@@ -91,13 +106,21 @@ class FlowStep(nn.Module):
             self.shuffle = modules.Permute2d(in_channels, shuffle=True)
         else:
             self.reverse = modules.Permute2d(in_channels, shuffle=False)
+
         # 3. coupling
         if flow_coupling == "additive":
             self.f = f(
                 in_channels // 2, in_channels // 2, hidden_channels, cond_channels
             )
         elif flow_coupling == "affine":
-            self.f = f(in_channels // 2, in_channels, hidden_channels, cond_channels)
+            # self.f = f(in_channels // 2, in_channels, hidden_channels, cond_channels)
+            self.f = EncoderHead(
+                    in_channels=in_channels // 2,
+                    out_channels=in_channels,
+                    hidden_channels=hidden_channels,
+                    condition_input=condition_input,
+                    timesteps=timesteps
+                    )
 
     def forward(self, input_, audio_features, logdet=None, reverse=False):
         if not reverse:
@@ -162,7 +185,8 @@ class FlowNet(nn.Module):
         flow_permutation="invconv",
         flow_coupling="additive",
         LU_decomposed=False,
-        cond_channels=None,
+        spec_frames=40,
+        n_mels=80,
     ):
         """
                              K                                      K
@@ -176,33 +200,40 @@ class FlowNet(nn.Module):
         self.output_shapes = []
         self.K = K
         self.L = L
-        H, W, C = image_shape
-        for i in range(L):
+        H, W, C = image_shape  # Timeframes, 1, Features
+
+        self.conditionNet = DeepSpeechEncoder(input_shape=(1, spec_frames, n_mels))
+
+        for l in range(L):
             # 1. Squeeze
-            C, H, W = C * 2, H // 2, W
+            C, H, W = C * 2, H // 2, W  # C: features, H: timesteps
             self.layers.append(modules.SqueezeLayer(factor=2))
             self.output_shapes.append([-1, C, H, W])
             # 2. K FlowStep
-            for _ in range(K):
+            for k in range(K):
                 self.layers.append(
                     FlowStep(
                         in_channels=C,
+                        timesteps=H,
                         hidden_channels=hidden_channels,
                         actnorm_scale=actnorm_scale,
                         flow_permutation=flow_permutation,
                         flow_coupling=flow_coupling,
                         LU_decomposed=LU_decomposed,
-                        cond_channels=cond_channels,
-                    )
+                        L=l,
+                        K=k,
+                        condition_input=self.conditionNet.out_size,
+                        timesteps=H)
                 )
                 self.output_shapes.append([-1, C, H, W])
             # 3. Split2d
-            if i < L - 1:
+            if l < L - 1:
                 self.layers.append(modules.Split2d(num_channels=C))
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
 
     def forward(self, input_, audio_features, logdet=0.0, reverse=False, eps_std=None):
+        audio_features = self.conditionNet(audio_features)  # Spectrogram
 
         if not reverse:
             return self.encode(input_, audio_features, logdet)
@@ -247,10 +278,12 @@ class Glow(nn.Module):
         )
         self.hparams = hparams
         self.y_classes = hparams.Glow.y_classes
+
         # for prior
         if hparams.Glow.learn_top:
             C = self.flow.output_shapes[-1][1]
             self.learn_top = modules.Conv2dZeros(C * 2, C * 2)
+
         if hparams.Glow.y_condition:
             C = self.flow.output_shapes[-1][1]
             self.project_ycond = modules.LinearZeros(hparams.Glow.y_classes, 2 * C)
