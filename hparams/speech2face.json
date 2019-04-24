@@ -23,7 +23,7 @@
         "y_condition": "single-class"
     },
     "Misc" : {
-        "video_url": "http://130.237.67.85:5005/runs/"
+        "video_url": "http://130.237.67.85:5006/runs/"
     },
     "Data" : {
         "center_crop": 160,
