@@ -26,7 +26,7 @@ if __name__ == "__main__":
     assert os.path.exists(hparams), "Failed to find hparams josn `{}`".format(hparams)
     hparams = JsonConfig(hparams)
     dataset = vision.Datasets[dataset]
-    print(dataset)
+
     # set transform of dataset
     transform = transforms.Compose(
         [

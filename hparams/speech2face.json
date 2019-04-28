@@ -3,7 +3,7 @@
         "log_root": "results/speech2face"
     },
     "Glow" : {
-        "image_shape": [64, 64, 1],
+        "image_shape": [64, 1, 64],
         "hidden_channels": 512,
         "K": 32,
         "L": 3,

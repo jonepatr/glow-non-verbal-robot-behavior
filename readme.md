@@ -1,10 +1,6 @@
 # Glow
 This is pytorch implementation of paper "Glow: Generative Flow with Invertible 1x1 Convolutions". Most modules are adapted from the offical TensorFlow version [openai/glow](https://github.com/openai/glow).
 
-
-
-asidefklasdjfkasldjff
-
 # TODO
 - [x] Glow model. The model is coded as described in original paper, some functions are adapted from offical TF version. Most modules are tested.
 - [x] Trainer, builder and hparams loaded from json.
