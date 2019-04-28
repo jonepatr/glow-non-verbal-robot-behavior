@@ -2,19 +2,56 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+import torch.nn.functional as F
+
+from glow.conditioning import DeepSpeechEncoder, EncoderHead
 from tqdm import tqdm
 
 from . import modules, thops, utils
 
 
-def f(in_channels, out_channels, hidden_channels):
-    return nn.Sequential(
-        modules.Conv2d(in_channels, hidden_channels),
-        nn.ReLU(inplace=False),
-        modules.Conv2d(hidden_channels, hidden_channels, kernel_size=[1, 1]),
-        nn.ReLU(inplace=False),
-        modules.Conv2dZeros(hidden_channels, out_channels),
-    )
+class f(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_channels, cond_channels):
+        super().__init__()
+        # self.spectrogram_conv = nn.Sequential(
+        #     nn.Conv2d(1, 72, (1, 3), stride=(1, 2), padding=(0, 1)),
+        #     nn.ReLU(),
+        #     nn.Conv2d(72, 108, (1, 3), stride=(1, 2), padding=(0, 1)),
+        #     nn.ReLU(),
+        #     nn.Conv2d(108, 162, (1, 3), stride=(1, 2), padding=(0, 1)),
+        #     nn.ReLU(),
+        #     nn.Conv2d(162, 243, (1, 3), stride=(1, 2), padding=(0, 1)),
+        #     nn.ReLU(),
+        #     nn.Conv2d(243, cond_channels, (1, 2), stride=(1, 2), padding=(0, 0)),
+        #     nn.ReLU(),
+        # )
+        self.in_channels = in_channels
+        self.gru = nn.GRU(80 * 11, 256, 2, batch_first=True, dropout=0.3)
+        self.fc = nn.Linear(256, cond_channels)
+
+        self.conv = nn.Sequential(
+            modules.Conv2d(in_channels + cond_channels, hidden_channels),
+            nn.ReLU(inplace=False),
+            modules.Conv2d(hidden_channels, hidden_channels, kernel_size=[1, 1]),
+            nn.ReLU(inplace=False),
+            modules.Conv2dZeros(hidden_channels, out_channels),
+        )
+
+    def forward(self, input_, audio_features):
+        # import pdb
+
+        # pdb.set_trace()
+
+        o, h = self.gru(audio_features)
+        condition = self.fc(o).unsqueeze(3)
+
+        fix_cond = (
+            condition[:, :1, :, :]
+            .permute(0, 2, 1, 3)
+            .expand(-1, -1, input_.shape[2], -1)
+        )
+
+        return self.conv(torch.cat((fix_cond, input_), dim=1))
 
 
 class FlowStep(nn.Module):
@@ -33,19 +70,34 @@ class FlowStep(nn.Module):
         flow_permutation="invconv",
         flow_coupling="additive",
         LU_decomposed=False,
+        cond_channels=None,
+        L=1,
+        K=1,
+        condition_input=256,
+        timesteps=1,
     ):
         # check configures
         assert (
             flow_coupling in FlowStep.FlowCoupling
         ), "flow_coupling should be in `{}`".format(FlowStep.FlowCoupling)
+
         assert (
             flow_permutation in FlowStep.FlowPermutation
         ), "float_permutation should be in `{}`".format(FlowStep.FlowPermutation.keys())
+
         super().__init__()
+
         self.flow_permutation = flow_permutation
         self.flow_coupling = flow_coupling
+
+        # Custom
+        self.L = L  # Which multiscale layer this module is in
+        self.K = K  # Which step of flow in self.L
+        self.condition_input = condition_input
+
         # 1. actnorm
         self.actnorm = modules.ActNorm2d(in_channels, actnorm_scale)
+
         # 2. permute
         if flow_permutation == "invconv":
             self.invconv = modules.InvertibleConv1x1(
@@ -55,22 +107,33 @@ class FlowStep(nn.Module):
             self.shuffle = modules.Permute2d(in_channels, shuffle=True)
         else:
             self.reverse = modules.Permute2d(in_channels, shuffle=False)
+
         # 3. coupling
         if flow_coupling == "additive":
-            self.f = f(in_channels // 2, in_channels // 2, hidden_channels)
+            self.f = f(
+                in_channels // 2, in_channels // 2, hidden_channels, cond_channels
+            )
         elif flow_coupling == "affine":
-            self.f = f(in_channels // 2, in_channels, hidden_channels)
+            # self.f = f(in_channels // 2, in_channels, hidden_channels, cond_channels)
+            self.f = EncoderHead(
+                in_channels=in_channels // 2,
+                out_channels=in_channels,
+                hidden_channels=hidden_channels,
+                condition_input=condition_input,
+                timesteps=timesteps,
+            )
 
-    def forward(self, input, logdet=None, reverse=False):
+    def forward(self, input_, audio_features, logdet=None, reverse=False):
         if not reverse:
-            return self.normal_flow(input, logdet)
+            return self.normal_flow(input_, audio_features, logdet)
         else:
-            return self.reverse_flow(input, logdet)
+            return self.reverse_flow(input_, audio_features, logdet)
 
-    def normal_flow(self, input, logdet):
-        assert input.size(1) % 2 == 0
+    def normal_flow(self, input_, audio_features, logdet):
+        assert input_.size(1) % 2 == 0
         # 1. actnorm
-        z, logdet = self.actnorm(input, logdet=logdet, reverse=False)
+
+        z, logdet = self.actnorm(input_, logdet=logdet, reverse=False)
         # 2. permute
         z, logdet = FlowStep.FlowPermutation[self.flow_permutation](
             self, z, logdet, False
@@ -78,9 +141,9 @@ class FlowStep(nn.Module):
         # 3. coupling
         z1, z2 = thops.split_feature(z, "split")
         if self.flow_coupling == "additive":
-            z2 = z2 + self.f(z1)
+            z2 = z2 + self.f(z1, audio_features)
         elif self.flow_coupling == "affine":
-            h = self.f(z1)
+            h = self.f(z1, audio_features)
             shift, scale = thops.split_feature(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 + shift
@@ -89,14 +152,14 @@ class FlowStep(nn.Module):
         z = thops.cat_feature(z1, z2)
         return z, logdet
 
-    def reverse_flow(self, input, logdet):
-        assert input.size(1) % 2 == 0
+    def reverse_flow(self, input_, audio_features, logdet):
+        assert input_.size(1) % 2 == 0
         # 1.coupling
-        z1, z2 = thops.split_feature(input, "split")
+        z1, z2 = thops.split_feature(input_, "split")
         if self.flow_coupling == "additive":
-            z2 = z2 - self.f(z1)
+            z2 = z2 - self.f(z1, audio_features)
         elif self.flow_coupling == "affine":
-            h = self.f(z1)
+            h = self.f(z1, audio_features)
             shift, scale = thops.split_feature(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 / scale
@@ -123,6 +186,8 @@ class FlowNet(nn.Module):
         flow_permutation="invconv",
         flow_coupling="additive",
         LU_decomposed=False,
+        spec_frames=40,
+        n_mels=80,
     ):
         """
                              K                                      K
@@ -136,14 +201,17 @@ class FlowNet(nn.Module):
         self.output_shapes = []
         self.K = K
         self.L = L
-        H, W, C = image_shape
-        for i in range(L):
+        H, W, C = image_shape  # Timeframes, 1, Features
+
+        self.conditionNet = DeepSpeechEncoder(input_shape=(1, spec_frames, n_mels))
+
+        for l in range(L):
             # 1. Squeeze
-            C, H, W = C * 2, H // 2, W
+            C, H, W = C * 2, H // 2, W  # C: features, H: timesteps
             self.layers.append(modules.SqueezeLayer(factor=2))
             self.output_shapes.append([-1, C, H, W])
             # 2. K FlowStep
-            for _ in range(K):
+            for k in range(K):
                 self.layers.append(
                     FlowStep(
                         in_channels=C,
@@ -152,31 +220,41 @@ class FlowNet(nn.Module):
                         flow_permutation=flow_permutation,
                         flow_coupling=flow_coupling,
                         LU_decomposed=LU_decomposed,
+                        L=l,
+                        K=k,
+                        condition_input=self.conditionNet.out_size,
+                        timesteps=H,
                     )
                 )
                 self.output_shapes.append([-1, C, H, W])
             # 3. Split2d
-            if i < L - 1:
+            if l < L - 1:
                 self.layers.append(modules.Split2d(num_channels=C))
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
 
-    def forward(self, input, logdet=0.0, reverse=False, eps_std=None):
+    def forward(self, input_, audio_features, logdet=0.0, reverse=False, eps_std=None):
+        audio_features = self.conditionNet(audio_features)  # Spectrogram
 
         if not reverse:
-            return self.encode(input, logdet)
+            return self.encode(input_, audio_features, logdet)
         else:
-            return self.decode(input, eps_std)
+            return self.decode(input_, audio_features, eps_std)
 
-    def encode(self, z, logdet=0.0):
+    def encode(self, z, audio_features, logdet=0.0):
         for layer, shape in zip(self.layers, self.output_shapes):
-            z, logdet = layer(z, logdet, reverse=False)
+            if isinstance(layer, FlowStep):
+                z, logdet = layer(z, audio_features, logdet, reverse=False)
+            else:
+                z, logdet = layer(z, logdet, reverse=False)
         return z, logdet
 
-    def decode(self, z, eps_std=None):
+    def decode(self, z, audio_features, eps_std=None):
         for layer in reversed(self.layers):
             if isinstance(layer, modules.Split2d):
                 z, logdet = layer(z, logdet=0, reverse=True, eps_std=eps_std)
+            elif isinstance(layer, FlowStep):
+                z, logdet = layer(z, audio_features, logdet=0, reverse=True)
             else:
                 z, logdet = layer(z, logdet=0, reverse=True)
         return z
@@ -197,13 +275,17 @@ class Glow(nn.Module):
             flow_permutation=hparams.Glow.flow_permutation,
             flow_coupling=hparams.Glow.flow_coupling,
             LU_decomposed=hparams.Glow.LU_decomposed,
+            spec_frames=hparams.Glow.spec_frames,
+            n_mels=hparams.Glow.n_mels,
         )
         self.hparams = hparams
         self.y_classes = hparams.Glow.y_classes
+
         # for prior
         if hparams.Glow.learn_top:
             C = self.flow.output_shapes[-1][1]
             self.learn_top = modules.Conv2dZeros(C * 2, C * 2)
+
         if hparams.Glow.y_condition:
             C = self.flow.output_shapes[-1][1]
             self.project_ycond = modules.LinearZeros(hparams.Glow.y_classes, 2 * C)
@@ -237,21 +319,30 @@ class Glow(nn.Module):
             h += yp
         return thops.split_feature(h, "split")
 
-    def forward(self, x=None, y_onehot=None, z=None, eps_std=None, reverse=False):
+    def forward(
+        self,
+        x=None,
+        audio_features=None,
+        y_onehot=None,
+        z=None,
+        eps_std=None,
+        reverse=False,
+    ):
         if not reverse:
-            return self.normal_flow(x, y_onehot)
+            return self.normal_flow(x, audio_features, y_onehot)
         else:
-            return self.reverse_flow(z, y_onehot, eps_std)
+            return self.reverse_flow(z, audio_features, y_onehot, eps_std)
 
-    def normal_flow(self, x, y_onehot):
+    def normal_flow(self, x, audio_features, y_onehot):
         pixels = thops.pixels(x)
-        z = x + torch.normal(
-            mean=torch.zeros_like(x), std=torch.ones_like(x) * (1.0 / 256.0)
-        )
+        # z = x + torch.normal(
+        #     mean=torch.zeros_like(x), std=torch.ones_like(x) * (1.0 / 256.0)
+        # )
+        z = x
         logdet = torch.zeros_like(x[:, 0, 0, 0])
-        logdet += float(-np.log(256.0) * pixels)
+        # logdet += float(-np.log(256.0) * pixels)
         # encode
-        z, objective = self.flow(z, logdet=logdet, reverse=False)
+        z, objective = self.flow(z, audio_features, logdet=logdet, reverse=False)
         # prior
         mean, logs = self.prior(y_onehot)
 
@@ -266,12 +357,12 @@ class Glow(nn.Module):
         nll = (-objective) / float(np.log(2.0) * pixels)
         return z, nll, y_logits
 
-    def reverse_flow(self, z, y_onehot, eps_std):
+    def reverse_flow(self, z, audio_features, y_onehot, eps_std):
         with torch.no_grad():
             mean, logs = self.prior(y_onehot)
             if z is None:
                 z = modules.GaussianDiag.sample(mean, logs, eps_std)
-            x = self.flow(z, eps_std=eps_std, reverse=True)
+            x = self.flow(z, audio_features, eps_std=eps_std, reverse=True)
         return x
 
     def set_actnorm_init(self, inited=True):
