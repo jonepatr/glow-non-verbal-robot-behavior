@@ -331,7 +331,7 @@ class Glow(nn.Module):
         nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
         audio_len = audio_features.size(1)
         if x:
-            face_len = x.shape(2)
+            face_len = x.size(2)
         else:
             face_len = 999999
         if audio_len < face_len:
