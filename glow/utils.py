@@ -1,12 +1,14 @@
+import copy
 import os
 import re
-import copy
-import torch
-import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from shutil import copyfile
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+matplotlib.use("Agg")
 
 
 def get_proper_cuda_device(device, verbose=True):
@@ -40,14 +42,18 @@ def get_proper_device(devices, verbose=True):
     devices = copy.copy(devices)
     if not isinstance(devices, list):
         devices = [devices]
-    use_cpu = any([d.find("cpu")>=0 for d in devices])
-    use_gpu = any([(d.find("cuda")>=0 or isinstance(d, int)) for d in devices])
+    use_cpu = any([d.find("cpu") >= 0 for d in devices])
+    use_gpu = any([(d.find("cuda") >= 0 or isinstance(d, int)) for d in devices])
     assert not (use_cpu and use_gpu), "{} contains cpu and cuda device.".format(devices)
     if use_gpu:
         devices = get_proper_cuda_device(devices, verbose)
         if len(devices) == 0:
             if verbose:
-                print("[Builder]: Failed to find any valid gpu in {}, use `cpu`.".format(origin))
+                print(
+                    "[Builder]: Failed to find any valid gpu in {}, use `cpu`.".format(
+                        origin
+                    )
+                )
             devices = ["cpu"]
     return devices
 
@@ -60,15 +66,25 @@ def _file_best():
     return "trained.pkg"
 
 
-def save(global_step, graph, optim, criterion_dict=None, pkg_dir="", is_best=False, max_checkpoints=None):
+def save(
+    global_step,
+    graph,
+    optim,
+    criterion_dict=None,
+    pkg_dir="",
+    is_best=False,
+    max_checkpoints=None,
+):
     if optim is None:
         raise ValueError("cannot save without optimzier")
     state = {
         "global_step": global_step,
         # DataParallel wrap model in attr `module`.
-        "graph": graph.module.state_dict() if hasattr(graph, "module") else graph.state_dict(),
+        "graph": graph.module.state_dict()
+        if hasattr(graph, "module")
+        else graph.state_dict(),
         "optim": optim.state_dict(),
-        "criterion": {}
+        "criterion": {},
     }
     if criterion_dict is not None:
         for k in criterion_dict:
@@ -88,7 +104,11 @@ def save(global_step, graph, optim, criterion_dict=None, pkg_dir="", is_best=Fal
         history.sort()
         while len(history) > max_checkpoints:
             path = os.path.join(pkg_dir, _file_at_step(history[0]))
-            print("[Checkpoint]: remove {} to keep {} checkpoints".format(path, max_checkpoints))
+            print(
+                "[Checkpoint]: remove {} to keep {} checkpoints".format(
+                    path, max_checkpoints
+                )
+            )
             if os.path.exists(path):
                 os.remove(path)
             history.pop(0)
@@ -111,7 +131,9 @@ def load(step_or_path, graph, optim=None, criterion_dict=None, pkg_dir="", devic
         print("[Checkpoint]: Failed to find {}".format(save_path))
         return
     if save_path is None:
-        print("[Checkpoint]: Cannot load the checkpoint with given step or filename or `best`")
+        print(
+            "[Checkpoint]: Cannot load the checkpoint with given step or filename or `best`"
+        )
         return
 
     # begin to load
@@ -132,7 +154,7 @@ def load(step_or_path, graph, optim=None, criterion_dict=None, pkg_dir="", devic
 
 def __save_figure_to_numpy(fig):
     # save it to a numpy array.
-    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     return data
 
@@ -141,9 +163,11 @@ def __to_ndarray_list(tensors, titles):
     if not isinstance(tensors, list):
         tensors = [tensors]
         titles = [titles]
-    assert len(titles) == len(tensors),\
-        "[visualizer]: {} titles are not enough for {} tensors".format(
-            len(titles), len(tensors))
+    assert len(titles) == len(
+        tensors
+    ), "[visualizer]: {} titles are not enough for {} tensors".format(
+        len(titles), len(tensors)
+    )
     for i in range(len(tensors)):
         if torch.is_tensor(tensors[i]):
             tensors[i] = tensors[i].cpu().detach().numpy()
@@ -164,7 +188,7 @@ def __make_dir(file_name, plot_dir):
 
 def __draw(fig, file_name, plot_dir):
     if file_name is not None:
-        plt.savefig('{}/{}.png'.format(plot_dir, file_name), format='png')
+        plt.savefig("{}/{}.png".format(plot_dir, file_name), format="png")
         plt.close(fig)
         return None
     else:
@@ -203,12 +227,12 @@ def plot_prob(done, title="", file_name=None, plot_dir=None):
     figsize = (5, 5 * len(done))
     fig, axes = __get_figures(len(done), figsize)
     for ax, d, t in zip(axes, done, title):
-        im = ax.imshow(d, vmin=0, vmax=1, cmap="Blues", aspect=d.shape[1]/d.shape[0])
+        im = ax.imshow(d, vmin=0, vmax=1, cmap="Blues", aspect=d.shape[1] / d.shape[0])
         ax.set_title(t)
         ax.set_yticks(np.arange(d.shape[0]))
-        lables = ["Frame{}".format(i+1) for i in range(d.shape[0])]
+        lables = ["Frame{}".format(i + 1) for i in range(d.shape[0])]
         ax.set_yticklabels(lables)
-        ax.set_yticks(np.arange(d.shape[0])-.5, minor=True)
-        ax.grid(which="minor", color="g", linestyle='-.', linewidth=1)
+        ax.set_yticks(np.arange(d.shape[0]) - 0.5, minor=True)
+        ax.grid(which="minor", color="g", linestyle="-.", linewidth=1)
         ax.invert_yaxis()
     return __draw(fig, file_name, plot_dir)

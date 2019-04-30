@@ -42,7 +42,7 @@ class Speech2FaceDataset(Dataset):
             self.audio_features_data.append(audio_feature_data)
             self.face_data.append(defaultdict(list))
 
-            openpose_data = np.load(openpose_file_path)
+            openpose_data = np.load(openpose_file_path, allow_pickle=True)
             for frame, all_faces in openpose_data.item().items():
                 all_faces_len = len(all_faces)
                 face_d = []

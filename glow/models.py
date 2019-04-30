@@ -129,7 +129,7 @@ class FlowStep(nn.Module):
             return self.reverse_flow(input_, audio_features, logdet)
 
     def normal_flow(self, input_, audio_features, logdet):
-        assert input_.size(1) % 2 == 0
+        assert input_.size(1) % 2 == 0, input_.shape
         # 1. actnorm
 
         z, logdet = self.actnorm(input_, logdet=logdet, reverse=False)
@@ -152,7 +152,7 @@ class FlowStep(nn.Module):
         return z, logdet
 
     def reverse_flow(self, input_, audio_features, logdet):
-        assert input_.size(1) % 2 == 0
+        assert input_.size(1) % 2 == 0, input_.shape
         # 1.coupling
         z1, z2 = thops.split_feature(input_, "split")
         if self.flow_coupling == "additive":
@@ -206,8 +206,8 @@ class FlowNet(nn.Module):
 
         for l in range(L):
             # 1. Squeeze
-            C, H, W = C * 2, H // 2, W  # C: features, H: timesteps
-            self.layers.append(modules.SqueezeLayer(factor=2))
+            # C, H, W = C * 2, H // 2, W  # C: features, H: timesteps
+            # self.layers.append(modules.SqueezeLayer(factor=2))
             self.output_shapes.append([-1, C, H, W])
             # 2. K FlowStep
             for k in range(K):
@@ -227,10 +227,10 @@ class FlowNet(nn.Module):
                 )
                 self.output_shapes.append([-1, C, H, W])
             # 3. Split2d
-            if l < L - 1:
-                self.layers.append(modules.Split2d(num_channels=C))
-                self.output_shapes.append([-1, C // 2, H, W])
-                C = C // 2
+            # if l < L - 1:
+            #     self.layers.append(modules.Split2d(num_channels=C))
+            #     self.output_shapes.append([-1, C // 2, H, W])
+            #     C = C // 2
 
     def forward(self, input_, audio_features, logdet=0.0, reverse=False, eps_std=None):
         audio_features = self.conditionNet(audio_features)  # Spectrogram
@@ -328,11 +328,26 @@ class Glow(nn.Module):
         reverse=False,
     ):
         if not reverse:
-            return self.normal_flow(x, audio_features, y_onehot)
-        else:
-            return self.reverse_flow(z, audio_features, y_onehot, eps_std)
+            # return self.normal_flow(x, audio_features, y_onehot)
 
-    def normal_flow(self, x, audio_features, y_onehot):
+            face_outputs = []
+            while len(face_outputs) < x.size(2):
+                time = len(face_outputs)
+                input_ = audio_features[:, time : time + 1]
+                face_output = x[:, :, time : time + 1]
+
+                z, nll, y_logits = self.normal_flow(face_output, input_)
+
+                face_outputs.append(z)
+
+            output = torch.cat(face_outputs, dim=2)
+
+            return output, nll, y_logits
+        else:
+            # return self.reverse_flow(z, audio_features, y_onehot, eps_std)
+            pass
+
+    def normal_flow(self, x, audio_features, y_onehot=None):
         pixels = thops.pixels(x)
         # z = x + torch.normal(
         #     mean=torch.zeros_like(x), std=torch.ones_like(x) * (1.0 / 256.0)
@@ -341,6 +356,7 @@ class Glow(nn.Module):
         logdet = torch.zeros_like(x[:, 0, 0, 0])
         # logdet += float(-np.log(256.0) * pixels)
         # encode
+
         z, objective = self.flow(z, audio_features, logdet=logdet, reverse=False)
         # prior
         mean, logs = self.prior(y_onehot)
@@ -356,7 +372,7 @@ class Glow(nn.Module):
         nll = (-objective) / float(np.log(2.0) * pixels)
         return z, nll, y_logits
 
-    def reverse_flow(self, z, audio_features, y_onehot, eps_std):
+    def reverse_flow(self, z, audio_features, eps_std, y_onehot=None):
         with torch.no_grad():
             mean, logs = self.prior(y_onehot)
             if z is None:

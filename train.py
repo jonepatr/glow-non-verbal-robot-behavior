@@ -1,5 +1,3 @@
-import os
-
 from glow.builder import build
 from glow.config import JsonConfig
 from glow.dataset import Speech2FaceDataset
@@ -12,7 +10,7 @@ if __name__ == "__main__":
     built = build(hparams, True)
     dataset = Speech2FaceDataset(
         data_dir=hparams.Dir.data,
-        total_frames=hparams.Glow.image_shape[0],
+        total_frames=64,
         small=hparams.Data.small,
         audio_feature_type=hparams.Data.audio_feature_type,
     )

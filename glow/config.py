@@ -1,6 +1,6 @@
-import os
-import json
 import datetime
+import json
+import os
 
 
 class JsonConfig(dict):
@@ -9,6 +9,7 @@ class JsonConfig(dict):
     The Structure will be maintained as json.
     [TODO]: Some `asserts` can be make by key `__assert__`
     """
+
     Indent = 2
 
     def __init__(self, *argv, **kwargs):
@@ -18,18 +19,19 @@ class JsonConfig(dict):
         assert len(argv) == 0 or len(kwargs) == 0, (
             "[JsonConfig]: Cannot initialize with"
             " position parameters (json file or a dict)"
-            " and named parameters (key and values) at the same time.")
+            " and named parameters (key and values) at the same time."
+        )
         if len(argv) > 0:
             # init from a json or dict
-            assert len(argv) == 1, (
-                "[JsonConfig]: Need one positional parameters, found two.")
+            assert (
+                len(argv) == 1
+            ), "[JsonConfig]: Need one positional parameters, found two."
             arg = argv[0]
         else:
             arg = kwargs
         # begin initialization
         if isinstance(arg, str):
-            super().__setitem__("__name",
-                                os.path.splitext(os.path.basename(arg))[0])
+            super().__setitem__("__name", os.path.splitext(os.path.basename(arg))[0])
             with open(arg, "r") as load_f:
                 arg = json.load(load_f)
         if isinstance(arg, dict):
@@ -40,8 +42,11 @@ class JsonConfig(dict):
                     value = JsonConfig(value)
                 super().__setitem__(key, value)
         else:
-            raise TypeError(("[JsonConfig]: Do not support given input"
-                             " with type {}").format(type(arg)))
+            raise TypeError(
+                ("[JsonConfig]: Do not support given input" " with type {}").format(
+                    type(arg)
+                )
+            )
 
     def __setattr__(self, attr, value):
         raise Exception("[JsonConfig]: Can't set constant key {}".format(attr))
@@ -83,7 +88,8 @@ class JsonConfig(dict):
                     else:
                         assert v == self[k], (
                             "[JsonConfig]: Two config conflicts at"
-                            "`{}`, {} != {}".format(k, self[k], v))
+                            "`{}`, {} != {}".format(k, self[k], v)
+                        )
             else:
                 # new key, directly add
                 super().__setitem__(k, v)
@@ -91,9 +97,9 @@ class JsonConfig(dict):
 
     def date_name(self):
         date = str(datetime.datetime.now())
-        date = date[:date.rfind(":")].replace("-", "")\
-                                     .replace(":", "")\
-                                     .replace(" ", "_")
+        date = (
+            date[: date.rfind(":")].replace("-", "").replace(":", "").replace(" ", "_")
+        )
         return date + "_" + super().__getitem__("__name") + ".json"
 
     def dump(self, dir_path, json_name=None):
