@@ -342,9 +342,9 @@ class Glow(nn.Module):
         while len(face_outputs) < tot_len:
             time = len(face_outputs)
             input_ = audio_features[:, time : time + 1]
-            face_output = x[:, :, time : time + 1]
 
             if not reverse:
+                face_output = x[:, :, time : time + 1]
                 z, nll, _ = self.normal_flow(face_output, input_, y_onehot)
             else:
                 z, nll, _ = self.reverse_flow(z, audio_features, eps_std, y_onehot)
