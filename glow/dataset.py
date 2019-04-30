@@ -34,7 +34,7 @@ class Speech2FaceDataset(Dataset):
             filepath = basename(openpose_file_path).replace(".npy", "")
             if audio_feature_type == "spectrogram":
                 ms = MelSpectrogram(
-                    data_dir=data_dir, yt_video_id=filepath, hop_duration=0.01
+                    data_dir=data_dir, yt_video_id=filepath, hop_duration=0.033
                 )
                 audio_feature_data = np.load(ms.output().path).astype(np.float32)
             audio = DownloadYoutubeAudio(data_dir=data_dir, yt_video_id=filepath)
