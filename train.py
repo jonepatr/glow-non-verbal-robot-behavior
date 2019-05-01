@@ -10,7 +10,7 @@ if __name__ == "__main__":
     built = build(hparams, True)
     dataset = Speech2FaceDataset(
         data_dir=hparams.Dir.data,
-        total_frames=64,
+        total_frames=hparams.Glow.spec_frames,
         small=hparams.Data.small,
         audio_feature_type=hparams.Data.audio_feature_type,
     )
