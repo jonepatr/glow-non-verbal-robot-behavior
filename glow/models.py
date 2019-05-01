@@ -330,16 +330,8 @@ class Glow(nn.Module):
         face_outputs = []
         nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
         audio_len = audio_features.size(1)
-        if x:
-            face_len = x.size(2)
-        else:
-            face_len = 999999
-        if audio_len < face_len:
-            tot_len = audio_len
-        else:
-            tot_len = face_len
 
-        while len(face_outputs) < tot_len:
+        while len(face_outputs) < audio_len:
             time = len(face_outputs)
             input_ = audio_features[:, time : time + 1]
 
@@ -347,12 +339,12 @@ class Glow(nn.Module):
                 face_output = x[:, :, time : time + 1]
                 z, nll, _ = self.normal_flow(face_output, input_, y_onehot)
             else:
-                z, nll, _ = self.reverse_flow(z, audio_features, eps_std, y_onehot)
+                z, nll, _ = self.reverse_flow(z, input_, eps_std, y_onehot)
             nlls += nll
             face_outputs.append(z)
 
         output = torch.cat(face_outputs, dim=2)
-        return output, nlls / tot_len, None
+        return output, nlls / audio_len, None
 
     def normal_flow(self, x, audio_features, y_onehot=None):
         pixels = thops.pixels(x)
