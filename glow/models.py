@@ -348,10 +348,12 @@ class Glow(nn.Module):
             if z is not None:
                 assert z.size(2) == audio_len, (z.shape, audio_features.shape)
 
+            z_input = None
             while len(face_outputs) < audio_len:
                 time = len(face_outputs)
                 input_ = audio_features[:, time : time + 1]
-                z_input = z[:, :, time : time + 1]
+                if z is not None:
+                    z_input = z[:, :, time : time + 1]
 
                 x = self.reverse_flow(z_input, input_, eps_std, y_onehot)
 
