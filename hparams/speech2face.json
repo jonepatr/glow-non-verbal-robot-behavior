@@ -5,10 +5,10 @@
     },
     "Glow" : {
         "image_shape": [1, 1, 140],
-        "spec_frames": 213,
+        "spec_frames": 60,
         "n_mels": 80,
         "hidden_channels": 512,
-        "cond_channels": 64,
+        "cond_channels": 128,
         "K": 32,
         "L": 4,
         "actnorm_scale": 1.0,
@@ -60,8 +60,8 @@
         "checkpoints_gap": 5000,
         "num_plot_samples": 1,
         "scalar_log_gap": 50,
-        "plot_gap": 50,
-        "inference_gap": 50,
+        "plot_gap": 10,
+        "inference_gap": 10,
         "warm_start": "",
         "weight_y": 0.5
     },
