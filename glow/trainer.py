@@ -105,6 +105,7 @@ class Trainer(object):
         self.plot_gaps = hparams.Train.plot_gap
         self.inference_gap = hparams.Train.inference_gap
         self.video_url = hparams.Misc.video_url
+        self.spec_frames = hparams.Glow.spec_frames
 
     def train(self):
         # set to training state
@@ -296,7 +297,7 @@ class Trainer(object):
                                 .detach()
                                 .numpy()
                                 .transpose(1, 0, 2)
-                                .reshape(64, 70, 2),
+                                .reshape(self.spec_frames, 70, 2),
                                 new_path,
                                 batch["audio_path"][0],
                                 batch["first_frame"][0],
