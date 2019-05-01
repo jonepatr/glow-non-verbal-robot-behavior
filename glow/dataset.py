@@ -56,29 +56,16 @@ class Speech2FaceDataset(Dataset):
                         if first_frame + total_frames < data_len:
 
                             face = (len(self.face_data) - 1, frame, i, i + total_frames)
-
-                            first_audio_feature_frame = int(
-                                round(first_frame * (1.0 / 30.0)) // ms.hop_duration
-                            )
-
-                            audio_feature_frames = int(
-                                round((total_frames / 30.0) / ms.hop_duration)
-                            )
-
-                            last_audio_feature_frames = (
-                                first_audio_feature_frame + audio_feature_frames
-                            )
-
                             audio_features = (
                                 len(self.audio_features_data) - 1,
-                                first_audio_feature_frame,
-                                last_audio_feature_frames,
+                                first_frame,
+                                first_frame + total_frames,
                             )
 
                             if (
                                 all_faces_len > i + total_frames
-                                and last_audio_feature_frames
-                                < len(self.audio_features_data[-1])
+                                and len(self.audio_features_data[-1])
+                                > first_frame + total_frames
                             ):
                                 self.data.append(
                                     (
@@ -89,23 +76,6 @@ class Speech2FaceDataset(Dataset):
                                     )
                                 )
                     self.face_data[-1][frame] = np.array(face_d)
-
-    def prepare_pca(self, dataset_files, pca_dimensions):
-        pca = PCA(pca_dimensions)
-
-        pca_data = []
-        for n, openpose_file_path in enumerate(
-            tqdm(dataset_files, desc="Preparing PCA")
-        ):
-            openpose_data = np.load(openpose_file_path)
-
-            # do PCA
-            for frame, all_faces in openpose_data.item().items():
-                all_faces = all_faces.astype(np.float32)
-                for face in all_faces:
-                    pca_data.append(face.reshape(140))
-        data = np.array(pca_data)
-        self.pca = pca.fit(data)
 
     def __len__(self):
         return len(self.data)
