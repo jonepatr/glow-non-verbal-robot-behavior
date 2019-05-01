@@ -328,32 +328,36 @@ class Glow(nn.Module):
         reverse=False,
     ):
         face_outputs = []
-        nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
         audio_len = audio_features.size(1)
 
-        if x is not None:
+        if not reverse:
+            nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
             assert x.size(2) == audio_len, (x.shape, audio_features.shape)
-
-        if z is not None:
-            assert z.size(2) == audio_len, (z.shape, audio_features.shape)
-
-        while len(face_outputs) < audio_len:
-            time = len(face_outputs)
-            input_ = audio_features[:, time : time + 1]
-
-            if not reverse:
+            while len(face_outputs) < audio_len:
+                time = len(face_outputs)
+                input_ = audio_features[:, time : time + 1]
                 face_output = x[:, :, time : time + 1]
-                z_output, nll, _ = self.normal_flow(face_output, input_, y_onehot)
-            else:
+                z, nll, _ = self.normal_flow(face_output, input_, y_onehot)
+                nlls += nll
+                face_outputs.append(z)
 
-                z_output, nll, _ = self.reverse_flow(
-                    z[:, :, time : time + 1], input_, eps_std, y_onehot
-                )
-            nlls += nll
-            face_outputs.append(z_output)
+            output = torch.cat(face_outputs, dim=2)
+            return output, nlls / audio_len, None
 
-        output = torch.cat(face_outputs, dim=2)
-        return output, nlls / audio_len, None
+        else:
+            if z is not None:
+                assert z.size(2) == audio_len, (z.shape, audio_features.shape)
+
+            while len(face_outputs) < audio_len:
+                time = len(face_outputs)
+                input_ = audio_features[:, time : time + 1]
+                z_input = z[:, :, time : time + 1]
+
+                x = self.reverse_flow(z_input, input_, eps_std, y_onehot)
+
+                face_outputs.append(x)
+            output = torch.cat(face_outputs, dim=2)
+            return output
 
     def normal_flow(self, x, audio_features, y_onehot=None):
         pixels = thops.pixels(x)
