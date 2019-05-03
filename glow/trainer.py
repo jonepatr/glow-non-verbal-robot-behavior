@@ -288,30 +288,30 @@ class Trainer(object):
                             # self.writer.add_video(
                             #    "new_video", vid_tensor=v_np, fps=30, global_step=self.global_step
                             # )  # , self.global_step
-
-                            new_path = join(
-                                self.writer.log_dir,
-                                "samples",
-                                f"{str(self.global_step).zfill(7)}-{ci}.mp4",
-                            )
-                            utils.save_video_with_audio_reference(
-                                img[0]
-                                .cpu()
-                                .detach()
-                                .numpy()
-                                .transpose(1, 0, 2)
-                                .reshape(64, 70, 2),
-                                new_path,
-                                batch["audio_path"][0],
-                                batch["first_frame"][0],
-                            )
-                            self.writer.add_text(
-                                f"video {ci}",
-                                self.video_url
-                                + self.writer.log_dir
-                                + f"/samples/{str(self.global_step).zfill(7)}-{ci}.mp4",
-                                self.global_step,
-                            )
+                            if False:
+                                new_path = join(
+                                    self.writer.log_dir,
+                                    "samples",
+                                    f"{str(self.global_step).zfill(7)}-{ci}.mp4",
+                                )
+                                utils.save_video_with_audio_reference(
+                                    img[0]
+                                    .cpu()
+                                    .detach()
+                                    .numpy()
+                                    .transpose(1, 0, 2)
+                                    .reshape(64, 70, 2),
+                                    new_path,
+                                    batch["audio_path"][0],
+                                    batch["first_frame"][0],
+                                )
+                                self.writer.add_text(
+                                    f"video {ci}",
+                                    self.video_url
+                                    + self.writer.log_dir
+                                    + f"/samples/{str(self.global_step).zfill(7)}-{ci}.mp4",
+                                    self.global_step,
+                                )
                         # img = torch.clamp(img, min=0, max=1.0)
                         for bi in range(min([len(img), 4])):
                             self.writer.add_image(
