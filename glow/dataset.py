@@ -3,12 +3,12 @@ from collections import defaultdict
 from os.path import basename
 
 import numpy as np
+import pandas as pd
 from torch.utils.data import Dataset
 
 from luigi_pipeline.audio_processing import MelSpectrogram
-from luigi_pipeline.post_process_openpose import PostProcessOpenpose
+from luigi_pipeline.post_process_openface import PostProcessOpenface
 from luigi_pipeline.youtube_downloader import DownloadYoutubeAudio
-from sklearn.decomposition import PCA
 from tqdm import tqdm
 
 
@@ -18,7 +18,7 @@ class Speech2FaceDataset(Dataset):
     ):
         dataset_files = list(
             glob.glob(
-                PostProcessOpenpose(data_dir=data_dir, yt_video_id="*").output().path
+                PostProcessOpenface(data_dir=data_dir, yt_video_id="*").output().path
             )
         )
         if small:
@@ -28,10 +28,10 @@ class Speech2FaceDataset(Dataset):
         self.face_data = []
         self.audio_features_data = []
 
-        for n, openpose_file_path in enumerate(
+        for n, openface_file_path in enumerate(
             tqdm(dataset_files, desc="Loading dataset. Sit back and relax")
         ):
-            filepath = basename(openpose_file_path).replace(".npy", "")
+            filepath = basename(openface_file_path).replace(".csv", "")
             if audio_feature_type == "spectrogram":
                 ms = MelSpectrogram(
                     data_dir=data_dir, yt_video_id=filepath, hop_duration=0.01
@@ -42,18 +42,33 @@ class Speech2FaceDataset(Dataset):
             self.audio_features_data.append(audio_feature_data)
             self.face_data.append(defaultdict(list))
 
-            openpose_data = np.load(openpose_file_path)
-            for frame, all_faces in openpose_data.item().items():
+            openface_data = pd.read_csv(openface_file_path)
+
+            for frame, all_faces in openface_data.groupby("group"):
+
                 all_faces_len = len(all_faces)
                 face_d = []
-                if len(all_faces) > total_frames:
-                    data_len = len(all_faces)
-                    for i in range(data_len):
+                if all_faces_len > total_frames:
+                    for i in range(all_faces_len):
                         first_frame = frame + i
 
-                        face_d.append(all_faces[i].astype(np.float32).reshape(140, 1))
+                        face_d.append(
+                            all_faces.iloc[i][
+                                [
+                                    "AU01_r",
+                                    "AU02_r",
+                                    "AU04_r",
+                                    "pose_Rx",
+                                    "pose_Ry",
+                                    "pose_Rz",
+                                ]
+                            ]
+                            .to_numpy()
+                            .astype(np.float32)
+                            .reshape(6, 1)
+                        )
 
-                        if first_frame + total_frames < data_len:
+                        if first_frame + total_frames < all_faces_len:
 
                             face = (len(self.face_data) - 1, frame, i, i + total_frames)
 
