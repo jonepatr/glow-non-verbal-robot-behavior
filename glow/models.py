@@ -10,6 +10,35 @@ from . import modules, thops, utils
 
 
 class f(nn.Module):
+    """
+    input_size:  (glow) channels
+    """
+
+    def __init__(self, input_size, output_size, hidden_size, condition_size):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.input_size = input_size
+        self.condition_size = condition_size
+        self.output_size = output_size
+        self.rnn = nn.GRUCell(
+            input_size=input_size + condition_size, hidden_size=hidden_size
+        )
+        self.linear = nn.Linear(hidden_size, output_size)
+        self.inited = False
+
+    def initialize_state(self, z):
+        self.hidden = z.data.new(z.size(0), self.hidden_size).zero_()
+
+    def forward(self, z, condition):
+        if not self.inited:
+            self.initialize_state(z)
+            self.inited = True
+
+        rnn_input = torch.cat((z, condition), dim=1).squeeze(-1).squeeze(-1)
+        self.hidden = self.rnn(rnn_input, self.hidden)
+        return self.linear(self.hidden).unsqueeze(-1).unsqueeze(-1)
+
+class f_old(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_channels, cond_channels):
         super().__init__()
         # self.spectrogram_conv = nn.Sequential(
