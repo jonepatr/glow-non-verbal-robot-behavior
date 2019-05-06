@@ -6,22 +6,15 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from luigi_pipeline.audio_processing import MelSpectrogram
-from luigi_pipeline.post_process_openface import PostProcessOpenface
 from luigi_pipeline.youtube_downloader import DownloadYoutubeAudio
 from tqdm import tqdm
 
 
 class Speech2FaceDataset(Dataset):
     def __init__(
-        self, data_dir=None, total_frames=None, small=None, audio_feature_type=None
+        self, dataset_files, data_dir=None, total_frames=None, audio_feature_type=None
     ):
-        dataset_files = list(
-            glob.glob(
-                PostProcessOpenface(data_dir=data_dir, yt_video_id="*").output().path
-            )
-        )
-        if small:
-            dataset_files = dataset_files[:2]
+
         self.data = []
 
         self.face_data = []

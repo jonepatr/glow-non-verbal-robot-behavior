@@ -1,5 +1,3 @@
-import os
-
 from glow.builder import build
 from glow.config import JsonConfig
 from glow.dataset import Speech2FaceDataset
@@ -10,13 +8,33 @@ if __name__ == "__main__":
 
     # build graph and dataset
     built = build(hparams, True)
-    dataset = Speech2FaceDataset(
+
+    train_files = hparams.Files.train
+    validation_files = hparams.Files.train
+
+    if hparams.Data.small:
+        train_files = train_files[:2]
+        validation_files = validation_files[:2]
+
+    train_dataset = Speech2FaceDataset(
+        train_files,
         data_dir=hparams.Dir.data,
         total_frames=hparams.Glow.image_shape[0],
-        small=hparams.Data.small,
+        audio_feature_type=hparams.Data.audio_feature_type,
+    )
+
+    validation_dataset = Speech2FaceDataset(
+        validation_files,
+        data_dir=hparams.Dir.data,
+        total_frames=hparams.Glow.image_shape[0],
         audio_feature_type=hparams.Data.audio_feature_type,
     )
 
     # begin to train
-    trainer = Trainer(**built, dataset=dataset, hparams=hparams)
+    trainer = Trainer(
+        **built,
+        train_dataset=train_dataset,
+        validation_dataset=validation_dataset,
+        hparams=hparams
+    )
     trainer.train()

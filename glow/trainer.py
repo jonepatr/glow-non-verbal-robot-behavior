@@ -43,7 +43,8 @@ class Trainer(object):
         loaded_step,
         devices,
         data_device,
-        dataset,
+        train_dataset,
+        validation_dataset,
         hparams,
     ):
         if isinstance(hparams, str):
@@ -77,10 +78,16 @@ class Trainer(object):
         # number of training batches
         self.batch_size = hparams.Train.batch_size
         self.data_loader = DataLoader(
-            dataset,
+            train_dataset,
             batch_size=self.batch_size,
             # num_workers=20,
             shuffle=True,
+            drop_last=True,
+            pin_memory=True,
+        )
+        self.validation_loader = DataLoader(
+            validation_dataset,
+            batch_size=self.batch_size,
             drop_last=True,
             pin_memory=True,
         )
@@ -107,14 +114,16 @@ class Trainer(object):
         self.scalar_log_gaps = hparams.Train.scalar_log_gap
         self.plot_gaps = hparams.Train.plot_gap
         self.inference_gap = hparams.Train.inference_gap
+        self.validation_gap = hparams.Train.validation_gap
         self.video_url = hparams.Misc.video_url
 
     def train(self):
         # set to training state
-        self.graph.train()
+
         self.global_step = self.loaded_step
         # begin to train
         for epoch in range(self.n_epoches):
+            self.graph.train()
             print("epoch", epoch)
             progress = tqdm(self.data_loader)
             for i_batch, batch in enumerate(progress):
@@ -169,6 +178,7 @@ class Trainer(object):
                     )
 
                 # forward phase
+
                 z, nll, y_logits = self.graph(
                     x=x, audio_features=batch["audio_features"], y_onehot=y_onehot
                 )
@@ -211,7 +221,7 @@ class Trainer(object):
                         )
                 # step
                 self.optim.step()
-
+                self.graph.eval()
                 # checkpoints
                 if (
                     self.global_step % self.checkpoints_gap == 0
@@ -261,6 +271,26 @@ class Trainer(object):
                                 plot_prob([y_pred[bi], y_true[bi]], ["pred", "true"]),
                                 self.global_step,
                             )
+
+                if (
+                    hasattr(self, "validation_gap")
+                    and self.global_step % self.inference_gap == 0
+                ):
+                    validation_loss = 0
+                    for i_val_batch, val_batch in enumerate(
+                        tqdm(self.validation_loader, desc="Validation")
+                    ):
+                        z, nll, y_logits = self.graph(
+                            x=val_batch["x"], audio_features=val_batch["audio_features"]
+                        )
+
+                        # loss
+                        validation_loss += Glow.loss_generative(nll)
+                    self.writer.add_scalar(
+                        "loss/validation_loss_generative",
+                        validation_loss / (i_val_batch + 1),
+                        self.global_step,
+                    )
 
                 # inference
                 if hasattr(self, "inference_gap"):
