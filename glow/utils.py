@@ -63,8 +63,10 @@ class VideoRender(object):
 
                 with open(os.path.join(td, f"{str(i).zfill(3)}.png"), "wb") as f:
                     f.write(d.content)
-
-            os.makedirs(os.path.dirname(file_name))
+            print('audio start', str(float(first_frame) / fps))
+            print('audio stop', str(float(x.shape[0]) / fps))
+            print('x shape', x.shape[0])
+            os.makedirs(os.path.dirname(file_name), exist_ok=True)
             subprocess.Popen(
                 [
                     self.ffmpeg_bin,
