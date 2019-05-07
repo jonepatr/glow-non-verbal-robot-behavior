@@ -14,80 +14,78 @@ import tempfile
 
 matplotlib.use("Agg")
 
-FFMPEG_BIN = "/usr/bin/ffmpeg"
 
+class VideoRender(object):
+    def __init__(self, render_url, ffmpeg_bin=None):
+        requests.post(render_url, {})
+        self.render_url = render_url
 
-def calc_au(x):
-    if x < 1:
-        x = 0
-    return round(x / 4, 4)
+        if not ffmpeg_bin:
+            for sys_path in os.environ['PATH'].split(':'):
+                ffmpeg_location = os.path.join(sys_path, 'ffmpeg')
+                if os.path.isfile(ffmpeg_location):
+                    ffmpeg_bin = ffmpeg_location
+                    break
 
+        assert ffmpeg_bin is not None
+        self.ffmpeg_bin = ffmpeg_bin
 
-def render(file_name, x, audio_path, video_file, first_frame):
-    try:
-        requests.post("http://localhost:5000", {})
-    except requests.exceptions.RequestException as e:
-        return False
-    fps = 30
-    ffmpeg_bin = None
-    for sys_path in os.environ['PATH'].split(':'):
-        ffmpeg_location = os.path.join(sys_path, 'ffmpeg')
-        if os.path.isfile(ffmpeg_location):
-            ffmpeg_bin = ffmpeg_location
-            break
+    @staticmethod
+    def calc_au(x):
+        if x < 1:
+            x = 0
+        return round(x / 4, 4)
 
-    if not ffmpeg_bin:
-        return False
+    def render(self, file_name, x, audio_path, video_file, first_frame, fps=30):
+        with tempfile.TemporaryDirectory() as td:
+            for i, x in enumerate(x):
+                AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = x
+                AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = (
+                    AU01_r[0],
+                    AU02_r[0],
+                    AU04_r[0],
+                    pose_Rx[0],
+                    pose_Ry[0],
+                    pose_Rz[0],
+                )
 
-    with tempfile.TemporaryDirectory() as td:
-        for i, x in enumerate(x):
-            AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = x
-            AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = (
-                AU01_r[0],
-                AU02_r[0],
-                AU04_r[0],
-                pose_Rx[0],
-                pose_Ry[0],
-                pose_Rz[0],
-            )
+                data = {
+                    "BrowsU_C_L": self.calc_au(AU01_r),  # AU01
+                    "BrowsU_C_R": self.calc_au(AU01_r),  # AU01
+                    "BrowsU_L": self.calc_au(AU01_r),  # AU02
+                    "BrowsU_R": self.calc_au(AU01_r),  # AU02
+                    "BrowsD_L": self.calc_au(AU01_r),  # AU04
+                    "BrowsD_R": self.calc_au(AU01_r),  # AU04
+                    "rotation": f"euler_xyz,{pose_Rx},{pose_Ry},{pose_Rz}",
+                }
 
-            data = {
-                "BrowsU_C_L": calc_au(AU01_r),  # AU01
-                "BrowsU_C_R": calc_au(AU01_r),  # AU01
-                "BrowsU_L": calc_au(AU01_r),  # AU02
-                "BrowsU_R": calc_au(AU01_r),  # AU02
-                "BrowsD_L": calc_au(AU01_r),  # AU04
-                "BrowsD_R": calc_au(AU01_r),  # AU04
-                "rotation": f"euler_xyz,{pose_Rx},{pose_Ry},{pose_Rz}",
-            }
+                d = requests.post(self.render_url, json.dumps(data))
 
-            d = requests.post("http://localhost:5000", json.dumps(data))
+                with open(os.path.join(td, f"{str(i).zfill(3)}.png"), "wb") as f:
+                    f.write(d.content)
 
-            with open(os.path.join(td, f"{str(i).zfill(3)}.png"), "wb") as f:
-                f.write(d.content)
-
-        subprocess.Popen(
-            [
-                ffmpeg_bin,
-                "-y",
-                "-framerate",
-                "30",
-                "-pattern_type",
-                "glob",
-                "-i",
-                os.path.join(td, "*.png"),
-                "-ss",
-                str(float(first_frame) / fps),
-                "-t",
-                str(float(x.shape[0]) / fps),
-                "-i",
-                audio_path,
-                file_name,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).communicate()
-        return True
+            os.makedirs(os.path.dirname(file_name))
+            subprocess.Popen(
+                [
+                    self.ffmpeg_bin,
+                    "-y",
+                    "-framerate",
+                    "30",
+                    "-pattern_type",
+                    "glob",
+                    "-i",
+                    os.path.join(td, "*.png"),
+                    "-ss",
+                    str(float(first_frame) / fps),
+                    "-t",
+                    str(float(x.shape[0]) / fps),
+                    "-i",
+                    audio_path,
+                    file_name,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).communicate()
 
 
 def get_proper_cuda_device(device, verbose=True):
