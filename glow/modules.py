@@ -373,7 +373,7 @@ def unsqueeze2d(input, factor=2):
     assert C % (factor2) == 0, "{}".format(C)
     x = input.view(B, C // factor, factor, 1, H, W)
     x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
-    x = x.view(B, C // factor, H * factor, W * 1)
+    x = x.view(B, C // factor, H * factor, W)
     return x
 
 

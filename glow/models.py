@@ -305,9 +305,9 @@ class FlowNet(nn.Module):
         return z, logdet
 
     def decode(self, z, audio_features, eps_std=None):
-        # for layer in self.layers:
-        #     if isinstance(layer, modules.SqueezeLayer):
-        #         audio_features = layer.squeeze_cond(audio_features)
+        for layer in self.layers:
+            if isinstance(layer, modules.SqueezeLayer):
+                audio_features = layer.squeeze_cond(audio_features)
 
         for layer in reversed(self.layers):
             if isinstance(layer, modules.Split2d):
