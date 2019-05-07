@@ -123,10 +123,10 @@ class Trainer(object):
         self.global_step = self.loaded_step
         # begin to train
         for epoch in range(self.n_epoches):
-            self.graph.train()
             print("epoch", epoch)
             progress = tqdm(self.data_loader)
             for i_batch, batch in enumerate(progress):
+                self.graph.train()
                 # update learning rate
                 lr = self.lrschedule["func"](
                     global_step=self.global_step, **self.lrschedule["args"]
