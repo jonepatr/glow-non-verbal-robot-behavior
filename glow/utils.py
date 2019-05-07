@@ -78,7 +78,7 @@ class VideoRender(object):
                     "-ss",
                     str(float(first_frame) / fps),
                     "-t",
-                    str(float(x.shape[0]) / fps),
+                    str(float(generated_values.shape[0]) / fps),
                     "-i",
                     audio_path,
                     file_name,
