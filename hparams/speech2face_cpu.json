@@ -62,7 +62,7 @@
         "num_plot_samples": 1,
         "scalar_log_gap": 1,
         "plot_gap": 10,
-        "inference_gap": 10,
+        "inference_gap": 50,
         "warm_start": "./results/speech2face/trained.pkg",
         "weight_y": 0.5
     },
