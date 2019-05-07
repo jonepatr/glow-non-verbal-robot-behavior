@@ -28,7 +28,6 @@
     "Data" : {
         "center_crop": 160,
         "resize": 64,
-        "small": false,
         "audio_feature_type": "spectrogram"
     },
     "Optim": {

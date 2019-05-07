@@ -8,6 +8,7 @@ from glow.trainer import Trainer
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config", default="hparams/speech2face_gpu.json")
+    parser.add_argument("--small", action="store_true")
     args = parser.parse_args()
 
     hparams = JsonConfig(args.config)
@@ -18,7 +19,7 @@ if __name__ == "__main__":
     train_files = hparams.Files.train
     validation_files = hparams.Files.train
 
-    if hparams.Data.small:
+    if args.small:
         train_files = train_files[:2]
         validation_files = validation_files[:2]
 
