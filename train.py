@@ -1,10 +1,16 @@
+import argparse
+
 from glow.builder import build
 from glow.config import JsonConfig
 from glow.dataset import Speech2FaceDataset
 from glow.trainer import Trainer
 
 if __name__ == "__main__":
-    hparams = JsonConfig("hparams/speech2face.json")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config", default="hparams/speech2face_gpu.json")
+    args = parser.parse_args()
+
+    hparams = JsonConfig(args.config)
 
     # build graph and dataset
     built = build(hparams, True)

@@ -274,7 +274,7 @@ class Trainer(object):
 
                 if (
                     hasattr(self, "validation_gap")
-                    and self.global_step % self.inference_gap == 0
+                    and self.global_step % self.validation_gap == 0
                 ):
                     validation_loss = 0
                     for i_val_batch, val_batch in enumerate(
@@ -305,7 +305,7 @@ class Trainer(object):
                                 z=None,
                                 audio_features=batch["audio_features"],
                                 y_onehot=y_onehot,
-                                eps_std=0.5,
+                                eps_std=1,
                                 reverse=True,
                             )
                             # Batch, 1 , Time , Feaures

@@ -8,8 +8,30 @@ from tqdm import tqdm
 
 from . import modules, thops, utils
 
+# class f(nn.Module):
+#     def __init__(self, in_channels, out_channels, hidden_channels, condition_channels):
+#         self.conv = nn.Sequential(
+#             modules.Conv2d(in_channels + condition_channels, hidden_channels),
+#             nn.ReLU(inplace=False),
+#             modules.Conv2d(hidden_channels, hidden_channels, kernel_size=[1, 1]),
+#             nn.ReLU(inplace=False),
+#             modules.Conv2dZeros(hidden_channels, out_channels),
+#         )
 
-class f(nn.Module):
+#     def forward(self, z, cond):
+#         z_cond = torch.cat((z, cond), dim=1)
+#         return self.conv(z_cond)
+def f(in_channels, out_channels, hidden_channels, cond_channels):
+    return nn.Sequential(
+        modules.Conv2d(in_channels + cond_channels, hidden_channels),
+        nn.ReLU(inplace=False),
+        modules.Conv2d(hidden_channels, hidden_channels, kernel_size=[1, 1]),
+        nn.ReLU(inplace=False),
+        modules.Conv2dZeros(hidden_channels, out_channels),
+    )
+
+
+class f_new(nn.Module):
     """
     input_size:  (glow) channels
     """
@@ -37,6 +59,7 @@ class f(nn.Module):
         rnn_input = torch.cat((z, condition), dim=1).squeeze(-1).squeeze(-1)
         self.hidden = self.rnn(rnn_input, self.hidden)
         return self.linear(self.hidden).unsqueeze(-1).unsqueeze(-1)
+
 
 class f_old(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_channels, cond_channels):
@@ -94,14 +117,13 @@ class FlowStep(nn.Module):
         self,
         in_channels,
         hidden_channels,
+        cond_channels,
         actnorm_scale=1.0,
         flow_permutation="invconv",
         flow_coupling="additive",
         LU_decomposed=False,
-        cond_channels=None,
         L=1,
         K=1,
-        condition_input=256,
         timesteps=1,
     ):
         # check configures
@@ -121,7 +143,9 @@ class FlowStep(nn.Module):
         # Custom
         self.L = L  # Which multiscale layer this module is in
         self.K = K  # Which step of flow in self.L
-        self.condition_input = condition_input
+        self.cond_channels = cond_channels
+        self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
 
         # 1. actnorm
         self.actnorm = modules.ActNorm2d(in_channels, actnorm_scale)
@@ -142,14 +166,14 @@ class FlowStep(nn.Module):
                 in_channels // 2, in_channels // 2, hidden_channels, cond_channels
             )
         elif flow_coupling == "affine":
-            # self.f = f(in_channels // 2, in_channels, hidden_channels, cond_channels)
-            self.f = EncoderHead(
-                in_channels=in_channels // 2,
-                out_channels=in_channels,
-                hidden_channels=hidden_channels,
-                condition_input=condition_input,
-                timesteps=timesteps,
-            )
+            self.f = f(in_channels // 2, in_channels, hidden_channels, cond_channels)
+            # self.f = EncoderHead(
+            #     in_channels=in_channels // 2,
+            #     out_channels=in_channels,
+            #     hidden_channels=hidden_channels,
+            #     condition_input=self.cond_channels,
+            #     timesteps=timesteps,
+            # )
 
     def forward(self, input_, audio_features, logdet=None, reverse=False):
         if not reverse:
@@ -168,26 +192,31 @@ class FlowStep(nn.Module):
         )
         # 3. coupling
         z1, z2 = thops.split_feature(z, "split")
+
+        z1_cond = torch.cat((z1, audio_features), dim=1)
+
         if self.flow_coupling == "additive":
-            z2 = z2 + self.f(z1, audio_features)
+            z2 = z2 + self.f(z1_cond)
         elif self.flow_coupling == "affine":
-            h = self.f(z1, audio_features)
+            h = self.f(z1_cond)
             shift, scale = thops.split_feature(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 + shift
             z2 = z2 * scale
             logdet = thops.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
         z = thops.cat_feature(z1, z2)
-        return z, logdet
+        return z, audio_features, logdet
 
     def reverse_flow(self, input_, audio_features, logdet):
         assert input_.size(1) % 2 == 0
         # 1.coupling
         z1, z2 = thops.split_feature(input_, "split")
+        z1_cond = torch.cat((z1, audio_features), dim=1)
+
         if self.flow_coupling == "additive":
-            z2 = z2 - self.f(z1, audio_features)
+            z2 = z2 - self.f(z1_cond)
         elif self.flow_coupling == "affine":
-            h = self.f(z1, audio_features)
+            h = self.f(z1_cond)
             shift, scale = thops.split_feature(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 / scale
@@ -200,7 +229,7 @@ class FlowStep(nn.Module):
         )
         # 3. actnorm
         z, logdet = self.actnorm(z, logdet=logdet, reverse=True)
-        return z, logdet
+        return z, audio_features, logdet
 
 
 class FlowNet(nn.Module):
@@ -208,6 +237,7 @@ class FlowNet(nn.Module):
         self,
         image_shape,
         hidden_channels,
+        cond_channels,
         K,
         L,
         actnorm_scale=1.0,
@@ -230,12 +260,12 @@ class FlowNet(nn.Module):
         self.K = K
         self.L = L
         H, W, C = image_shape  # Timeframes, 1, Features
-
-        self.conditionNet = DeepSpeechEncoder(input_shape=(1, spec_frames, n_mels))
+        N = cond_channels
+        # self.conditionNet = DeepSpeechEncoder(input_shape=(1, spec_frames, n_mels))
 
         for l in range(L):
             # 1. Squeeze
-            C, H, W = C * 2, H // 2, W  # C: features, H: timesteps
+            C, H, W, N = C * 2, H // 2, W, N * 2  # C: features, H: timesteps
             self.layers.append(modules.SqueezeLayer(factor=2))
             self.output_shapes.append([-1, C, H, W])
             # 2. K FlowStep
@@ -244,13 +274,13 @@ class FlowNet(nn.Module):
                     FlowStep(
                         in_channels=C,
                         hidden_channels=hidden_channels,
+                        cond_channels=N,
                         actnorm_scale=actnorm_scale,
                         flow_permutation=flow_permutation,
                         flow_coupling=flow_coupling,
                         LU_decomposed=LU_decomposed,
                         L=l,
                         K=k,
-                        condition_input=self.conditionNet.out_size,
                         timesteps=H,
                     )
                 )
@@ -262,7 +292,7 @@ class FlowNet(nn.Module):
                 C = C // 2
 
     def forward(self, input_, audio_features, logdet=0.0, reverse=False, eps_std=None):
-        audio_features = self.conditionNet(audio_features)  # Spectrogram
+        # audio_features = self.conditionNet(audio_features)  # Spectrogram
 
         if not reverse:
             return self.encode(input_, audio_features, logdet)
@@ -271,20 +301,23 @@ class FlowNet(nn.Module):
 
     def encode(self, z, audio_features, logdet=0.0):
         for layer, shape in zip(self.layers, self.output_shapes):
-            if isinstance(layer, FlowStep):
-                z, logdet = layer(z, audio_features, logdet, reverse=False)
-            else:
-                z, logdet = layer(z, logdet, reverse=False)
+            z, audio_features, logdet = layer(z, audio_features, logdet, reverse=False)
         return z, logdet
 
     def decode(self, z, audio_features, eps_std=None):
+        # for layer in self.layers:
+        #     if isinstance(layer, modules.SqueezeLayer):
+        #         audio_features = layer.squeeze_cond(audio_features)
+
         for layer in reversed(self.layers):
             if isinstance(layer, modules.Split2d):
-                z, logdet = layer(z, logdet=0, reverse=True, eps_std=eps_std)
-            elif isinstance(layer, FlowStep):
-                z, logdet = layer(z, audio_features, logdet=0, reverse=True)
+                z, audio_features, logdet = layer(
+                    z, audio_features, logdet=0, reverse=True, eps_std=eps_std
+                )
             else:
-                z, logdet = layer(z, logdet=0, reverse=True)
+                z, audio_features, logdet = layer(
+                    z, audio_features, logdet=0, reverse=True
+                )
         return z
 
 
@@ -297,6 +330,7 @@ class Glow(nn.Module):
         self.flow = FlowNet(
             image_shape=hparams.Glow.image_shape,
             hidden_channels=hparams.Glow.hidden_channels,
+            cond_channels=hparams.Glow.cond_channels,
             K=hparams.Glow.K,
             L=hparams.Glow.L,
             actnorm_scale=hparams.Glow.actnorm_scale,
@@ -356,10 +390,11 @@ class Glow(nn.Module):
         eps_std=None,
         reverse=False,
     ):
+
         if not reverse:
-            return self.normal_flow(x, audio_features, y_onehot)
+            return self.normal_flow(x, audio_features.unsqueeze(-1), y_onehot)
         else:
-            return self.reverse_flow(z, audio_features, y_onehot, eps_std)
+            return self.reverse_flow(z, audio_features.unsqueeze(-1), y_onehot, eps_std)
 
     def normal_flow(self, x, audio_features, y_onehot):
         pixels = thops.pixels(x)

@@ -83,7 +83,7 @@ class Speech2FaceDataset(Dataset):
             ),
             "audio_features": self.audio_features_data[audio_feature_index][
                 audio_feature_start:audio_feature_stop
-            ],
+            ].T,
             "first_frame": first_frame,
             "audio_path": audio_path,
             "y": 1,
