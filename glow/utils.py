@@ -36,9 +36,9 @@ class VideoRender(object):
             x = 0
         return round(x / 4, 4)
 
-    def render(self, file_name, x, audio_path, video_file, first_frame, fps=30):
+    def render(self, file_name, generated_values, audio_path, video_file, first_frame, fps=30):
         with tempfile.TemporaryDirectory() as td:
-            for i, x in enumerate(x):
+            for i, x in enumerate(generated_values):
                 AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = x
                 AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = (
                     AU01_r[0],
@@ -63,9 +63,7 @@ class VideoRender(object):
 
                 with open(os.path.join(td, f"{str(i).zfill(3)}.png"), "wb") as f:
                     f.write(d.content)
-            print('audio start', str(float(first_frame) / fps))
-            print('audio stop', str(float(x.shape[0]) / fps))
-            print('x shape', x.shape[0])
+
             os.makedirs(os.path.dirname(file_name), exist_ok=True)
             subprocess.Popen(
                 [
