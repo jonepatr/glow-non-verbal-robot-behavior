@@ -1,12 +1,93 @@
+import copy
 import os
 import re
-import copy
-import torch
-import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import subprocess
 from shutil import copyfile
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import requests
+import torch
+import json
+import tempfile
+
+matplotlib.use("Agg")
+
+FFMPEG_BIN = "/usr/bin/ffmpeg"
+
+
+def calc_au(x):
+    if x < 1:
+        x = 0
+    return round(x / 4, 4)
+
+
+def render(file_name, x, audio_path, video_file, first_frame):
+    try:
+        requests.post("http://localhost:5000", {})
+    except requests.exceptions.RequestException as e:
+        return False
+    fps = 30
+    ffmpeg_bin = None
+    for sys_path in os.environ['PATH'].split(':'):
+        ffmpeg_location = os.path.join(sys_path, 'ffmpeg')
+        if os.path.isfile(ffmpeg_location):
+            ffmpeg_bin = ffmpeg_location
+            break
+
+    if not ffmpeg_bin:
+        return False
+
+    with tempfile.TemporaryDirectory() as td:
+        for i, x in enumerate(x):
+            AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = x
+            AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = (
+                AU01_r[0],
+                AU02_r[0],
+                AU04_r[0],
+                pose_Rx[0],
+                pose_Ry[0],
+                pose_Rz[0],
+            )
+
+            data = {
+                "BrowsU_C_L": calc_au(AU01_r),  # AU01
+                "BrowsU_C_R": calc_au(AU01_r),  # AU01
+                "BrowsU_L": calc_au(AU01_r),  # AU02
+                "BrowsU_R": calc_au(AU01_r),  # AU02
+                "BrowsD_L": calc_au(AU01_r),  # AU04
+                "BrowsD_R": calc_au(AU01_r),  # AU04
+                "rotation": f"euler_xyz,{pose_Rx},{pose_Ry},{pose_Rz}",
+            }
+
+            d = requests.post("http://localhost:5000", json.dumps(data))
+
+            with open(os.path.join(td, f"{str(i).zfill(3)}.png"), "wb") as f:
+                f.write(d.content)
+
+        subprocess.Popen(
+            [
+                ffmpeg_bin,
+                "-y",
+                "-framerate",
+                "30",
+                "-pattern_type",
+                "glob",
+                "-i",
+                os.path.join(td, "*.png"),
+                "-ss",
+                str(float(first_frame) / fps),
+                "-t",
+                str(float(x.shape[0]) / fps),
+                "-i",
+                audio_path,
+                file_name,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).communicate()
+        return True
 
 
 def get_proper_cuda_device(device, verbose=True):
@@ -40,14 +121,18 @@ def get_proper_device(devices, verbose=True):
     devices = copy.copy(devices)
     if not isinstance(devices, list):
         devices = [devices]
-    use_cpu = any([d.find("cpu")>=0 for d in devices])
-    use_gpu = any([(d.find("cuda")>=0 or isinstance(d, int)) for d in devices])
+    use_cpu = any([d.find("cpu") >= 0 for d in devices])
+    use_gpu = any([(d.find("cuda") >= 0 or isinstance(d, int)) for d in devices])
     assert not (use_cpu and use_gpu), "{} contains cpu and cuda device.".format(devices)
     if use_gpu:
         devices = get_proper_cuda_device(devices, verbose)
         if len(devices) == 0:
             if verbose:
-                print("[Builder]: Failed to find any valid gpu in {}, use `cpu`.".format(origin))
+                print(
+                    "[Builder]: Failed to find any valid gpu in {}, use `cpu`.".format(
+                        origin
+                    )
+                )
             devices = ["cpu"]
     return devices
 
@@ -60,15 +145,25 @@ def _file_best():
     return "trained.pkg"
 
 
-def save(global_step, graph, optim, criterion_dict=None, pkg_dir="", is_best=False, max_checkpoints=None):
+def save(
+        global_step,
+        graph,
+        optim,
+        criterion_dict=None,
+        pkg_dir="",
+        is_best=False,
+        max_checkpoints=None,
+):
     if optim is None:
         raise ValueError("cannot save without optimzier")
     state = {
         "global_step": global_step,
         # DataParallel wrap model in attr `module`.
-        "graph": graph.module.state_dict() if hasattr(graph, "module") else graph.state_dict(),
+        "graph": graph.module.state_dict()
+        if hasattr(graph, "module")
+        else graph.state_dict(),
         "optim": optim.state_dict(),
-        "criterion": {}
+        "criterion": {},
     }
     if criterion_dict is not None:
         for k in criterion_dict:
@@ -88,7 +183,11 @@ def save(global_step, graph, optim, criterion_dict=None, pkg_dir="", is_best=Fal
         history.sort()
         while len(history) > max_checkpoints:
             path = os.path.join(pkg_dir, _file_at_step(history[0]))
-            print("[Checkpoint]: remove {} to keep {} checkpoints".format(path, max_checkpoints))
+            print(
+                "[Checkpoint]: remove {} to keep {} checkpoints".format(
+                    path, max_checkpoints
+                )
+            )
             if os.path.exists(path):
                 os.remove(path)
             history.pop(0)
@@ -111,7 +210,9 @@ def load(step_or_path, graph, optim=None, criterion_dict=None, pkg_dir="", devic
         print("[Checkpoint]: Failed to find {}".format(save_path))
         return
     if save_path is None:
-        print("[Checkpoint]: Cannot load the checkpoint with given step or filename or `best`")
+        print(
+            "[Checkpoint]: Cannot load the checkpoint with given step or filename or `best`"
+        )
         return
 
     # begin to load
@@ -132,7 +233,7 @@ def load(step_or_path, graph, optim=None, criterion_dict=None, pkg_dir="", devic
 
 def __save_figure_to_numpy(fig):
     # save it to a numpy array.
-    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     return data
 
@@ -141,9 +242,11 @@ def __to_ndarray_list(tensors, titles):
     if not isinstance(tensors, list):
         tensors = [tensors]
         titles = [titles]
-    assert len(titles) == len(tensors),\
-        "[visualizer]: {} titles are not enough for {} tensors".format(
-            len(titles), len(tensors))
+    assert len(titles) == len(
+        tensors
+    ), "[visualizer]: {} titles are not enough for {} tensors".format(
+        len(titles), len(tensors)
+    )
     for i in range(len(tensors)):
         if torch.is_tensor(tensors[i]):
             tensors[i] = tensors[i].cpu().detach().numpy()
@@ -164,7 +267,7 @@ def __make_dir(file_name, plot_dir):
 
 def __draw(fig, file_name, plot_dir):
     if file_name is not None:
-        plt.savefig('{}/{}.png'.format(plot_dir, file_name), format='png')
+        plt.savefig("{}/{}.png".format(plot_dir, file_name), format="png")
         plt.close(fig)
         return None
     else:
@@ -203,12 +306,12 @@ def plot_prob(done, title="", file_name=None, plot_dir=None):
     figsize = (5, 5 * len(done))
     fig, axes = __get_figures(len(done), figsize)
     for ax, d, t in zip(axes, done, title):
-        im = ax.imshow(d, vmin=0, vmax=1, cmap="Blues", aspect=d.shape[1]/d.shape[0])
+        im = ax.imshow(d, vmin=0, vmax=1, cmap="Blues", aspect=d.shape[1] / d.shape[0])
         ax.set_title(t)
         ax.set_yticks(np.arange(d.shape[0]))
-        lables = ["Frame{}".format(i+1) for i in range(d.shape[0])]
+        lables = ["Frame{}".format(i + 1) for i in range(d.shape[0])]
         ax.set_yticklabels(lables)
-        ax.set_yticks(np.arange(d.shape[0])-.5, minor=True)
-        ax.grid(which="minor", color="g", linestyle='-.', linewidth=1)
+        ax.set_yticks(np.arange(d.shape[0]) - 0.5, minor=True)
+        ax.grid(which="minor", color="g", linestyle="-.", linewidth=1)
         ax.invert_yaxis()
     return __draw(fig, file_name, plot_dir)

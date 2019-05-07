@@ -6,7 +6,8 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from luigi_pipeline.audio_processing import MelSpectrogram
-from luigi_pipeline.youtube_downloader import DownloadYoutubeAudio
+from luigi_pipeline.youtube_downloader import (DownloadYoutubeAudio,
+                                               DownloadYoutubeVideo)
 from tqdm import tqdm
 
 
@@ -29,7 +30,16 @@ class Speech2FaceDataset(Dataset):
                     data_dir=data_dir, yt_video_id=filepath, hop_duration=0.033
                 )
                 audio_feature_data = np.load(ms.output().path).astype(np.float32)
-            audio = DownloadYoutubeAudio(data_dir=data_dir, yt_video_id=filepath)
+            audio_path = (
+                DownloadYoutubeAudio(data_dir=data_dir, yt_video_id=filepath)
+                .output()
+                .path
+            )
+            video_path = (
+                DownloadYoutubeVideo(data_dir=data_dir, yt_video_id=filepath)
+                .output()
+                .path
+            )
 
             self.audio_features_data.append(audio_feature_data)
             self.face_data.append(defaultdict(list))
@@ -63,7 +73,8 @@ class Speech2FaceDataset(Dataset):
                                         face,
                                         audio_features,
                                         first_frame,
-                                        audio.output().path,
+                                        audio_path,
+                                        video_path,
                                     )
                                 )
                     self.face_data[-1][frame] = np.array(face_d)
@@ -72,7 +83,7 @@ class Speech2FaceDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        face, audio_features, first_frame, audio_path, = self.data[index]
+        face, audio_features, first_frame, audio_path, video_path = self.data[index]
 
         face_index, frame, face_start, face_stop = face
         audio_feature_index, audio_feature_start, audio_feature_stop = audio_features
@@ -86,6 +97,7 @@ class Speech2FaceDataset(Dataset):
             ].T,
             "first_frame": first_frame,
             "audio_path": audio_path,
+            "video_path": video_path,
             "y": 1,
         }
 
