@@ -17,7 +17,7 @@ if __name__ == "__main__":
     built = build(hparams, True)
 
     train_files = hparams.Files.train
-    validation_files = hparams.Files.train
+    validation_files = hparams.Files.validation
 
     if args.small:
         train_files = train_files[:2]
