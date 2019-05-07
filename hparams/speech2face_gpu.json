@@ -61,7 +61,7 @@
         "scalar_log_gap": 10,
         "plot_gap": 20,
         "inference_gap": 10,
-        "warm_start": "",
+        "warm_start": "./results/speech2face/trained.pkg",
         "weight_y": 0.5
     },
     "Infer": {
