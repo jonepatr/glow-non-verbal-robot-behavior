@@ -4,7 +4,7 @@
         "data": "/projects/text2face/data2"
     },
     "Glow" : {
-        "image_shape": [160, 1, 6],
+        "image_shape": [160, 1, 7],
         "spec_frames": 160,
         "n_mels": 80,
         "hidden_channels": 512,
@@ -62,7 +62,8 @@
         "scalar_log_gap": 10,
         "plot_gap": 20,
         "inference_gap": 50,
-        "warm_start": "./results/speech2face/trained.pkg",
+        "warm_start2": "./results/speech2face/trained.pkg",
+        "warm_start": "",
         "weight_y": 0.5
     },
     "Infer": {
