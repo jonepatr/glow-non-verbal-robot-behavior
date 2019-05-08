@@ -1,7 +1,9 @@
 import copy
+import json
 import os
 import re
 import subprocess
+import tempfile
 from shutil import copyfile
 
 import matplotlib
@@ -9,8 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import requests
 import torch
-import json
-import tempfile
 
 matplotlib.use("Agg")
 
@@ -21,8 +21,8 @@ class VideoRender(object):
         self.render_url = render_url
 
         if not ffmpeg_bin:
-            for sys_path in os.environ['PATH'].split(':'):
-                ffmpeg_location = os.path.join(sys_path, 'ffmpeg')
+            for sys_path in os.environ["PATH"].split(":"):
+                ffmpeg_location = os.path.join(sys_path, "ffmpeg")
                 if os.path.isfile(ffmpeg_location):
                     ffmpeg_bin = ffmpeg_location
                     break
@@ -36,7 +36,9 @@ class VideoRender(object):
             x = 0
         return round(x / 4, 4)
 
-    def render(self, file_name, generated_values, audio_path, video_file, first_frame, fps=30):
+    def render(
+        self, file_name, generated_values, audio_path, video_file, first_frame, fps=30
+    ):
         with tempfile.TemporaryDirectory() as td:
             for i, x in enumerate(generated_values):
                 AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = x
@@ -50,13 +52,27 @@ class VideoRender(object):
                 )
 
                 data = {
-                    "BrowsU_C_L": self.calc_au(AU01_r),  # AU01
-                    "BrowsU_C_R": self.calc_au(AU01_r),  # AU01
-                    "BrowsU_L": self.calc_au(AU01_r),  # AU02
-                    "BrowsU_R": self.calc_au(AU01_r),  # AU02
-                    "BrowsD_L": self.calc_au(AU01_r),  # AU04
-                    "BrowsD_R": self.calc_au(AU01_r),  # AU04
-                    "rotation": f"euler_xyz,{pose_Rx},{pose_Ry},{pose_Rz}",
+                    "Head_Mesh": {
+                        "blendshapes": {
+                            "BrowsU_C_L": self.calc_au(AU01_r),  # AU01
+                            "BrowsU_C_R": self.calc_au(AU01_r),  # AU01
+                            "BrowsU_L": self.calc_au(AU01_r),  # AU02
+                            "BrowsU_R": self.calc_au(AU01_r),  # AU02
+                            "BrowsD_L": self.calc_au(AU01_r),  # AU04
+                            "BrowsD_R": self.calc_au(AU01_r),  # AU04
+                        }
+                    },
+                    "jointShouldersMiddle": {
+                        "bones": {
+                            "jointNeck": {"rotation": [pose_Rx, pose_Ry, pose_Rz]},
+                            "jointEyeLeft": {
+                                "rotation": [-pose_Rx, -pose_Ry, -pose_Rz]
+                            },
+                            "jointEyeRight": {
+                                "rotation": [-pose_Rx, -pose_Ry, -pose_Rz]
+                            },
+                        }
+                    },
                 }
 
                 d = requests.post(self.render_url, json.dumps(data))
@@ -144,13 +160,13 @@ def _file_best():
 
 
 def save(
-        global_step,
-        graph,
-        optim,
-        criterion_dict=None,
-        pkg_dir="",
-        is_best=False,
-        max_checkpoints=None,
+    global_step,
+    graph,
+    optim,
+    criterion_dict=None,
+    pkg_dir="",
+    is_best=False,
+    max_checkpoints=None,
 ):
     if optim is None:
         raise ValueError("cannot save without optimzier")
