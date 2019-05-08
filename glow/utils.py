@@ -97,6 +97,8 @@ class VideoRender(object):
                     str(float(generated_values.shape[0]) / fps),
                     "-i",
                     audio_path,
+                    "-codec",
+                    "copy",
                     file_name,
                 ],
                 stdout=subprocess.DEVNULL,
