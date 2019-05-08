@@ -43,12 +43,12 @@ class VideoRender(object):
             for i, x in enumerate(generated_values):
                 AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = x
                 AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = (
-                    AU01_r[0],
-                    AU02_r[0],
-                    AU04_r[0],
-                    pose_Rx[0],
-                    pose_Ry[0],
-                    pose_Rz[0],
+                    float(AU01_r[0]),
+                    float(AU02_r[0]),
+                    float(AU04_r[0]),
+                    float(pose_Rx[0]),
+                    float(pose_Ry[0]),
+                    float(pose_Rz[0]),
                 )
 
                 data = {
