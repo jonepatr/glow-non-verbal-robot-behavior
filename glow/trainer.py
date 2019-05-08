@@ -16,8 +16,7 @@ from tqdm import tqdm
 from . import thops
 from .config import JsonConfig
 from .models import Glow
-from .utils import load, plot_prob, VideoRender, save
-
+from .utils import VideoRender, load, plot_prob, save
 
 # torch.set_num_threads(1)
 
@@ -37,16 +36,16 @@ def dump_model_to_tensorboard(model, writer, channels=64, time=64):
 
 class Trainer(object):
     def __init__(
-            self,
-            graph,
-            optim,
-            lrschedule,
-            loaded_step,
-            devices,
-            data_device,
-            train_dataset,
-            validation_dataset,
-            hparams,
+        self,
+        graph,
+        optim,
+        lrschedule,
+        loaded_step,
+        devices,
+        data_device,
+        train_dataset,
+        validation_dataset,
+        hparams,
     ):
         if isinstance(hparams, str):
             hparams = JsonConfig(hparams)
@@ -151,12 +150,12 @@ class Trainer(object):
                 if self.y_condition:
                     if self.y_criterion == "multi-classes":
                         assert (
-                                "y_onehot" in batch
+                            "y_onehot" in batch
                         ), "multi-classes ask for `y_onehot` (torch.FloatTensor onehot)"
                         y_onehot = batch["y_onehot"]
                     elif self.y_criterion == "single-class":
                         assert (
-                                "y" in batch
+                            "y" in batch
                         ), "single-class ask for `y` (torch.LongTensor indexes)"
                         y = batch["y"]
                         y_onehot = thops.onehot(y, num_classes=self.y_classes)
@@ -166,7 +165,7 @@ class Trainer(object):
                     self.graph(
                         x[: self.batch_size // len(self.devices), ...],
                         batch["audio_features"][
-                        : self.batch_size // len(self.devices), ...
+                            : self.batch_size // len(self.devices), ...
                         ],
                         y_onehot[: self.batch_size // len(self.devices), ...]
                         if y_onehot is not None
@@ -225,8 +224,8 @@ class Trainer(object):
                 self.graph.eval()
                 # checkpoints
                 if (
-                        self.global_step % self.checkpoints_gap == 0
-                        and self.global_step > 0
+                    self.global_step % self.checkpoints_gap == 0
+                    and self.global_step > 0
                 ):
                     save(
                         global_step=self.global_step,
@@ -237,28 +236,9 @@ class Trainer(object):
                         max_checkpoints=self.max_checkpoints,
                     )
                 with torch.no_grad():
-                    if self.global_step % self.validation_gap == 0:
-
-                        validation_loss = 0
-                        for i_val_batch, val_batch in enumerate(
-                                tqdm(self.validation_loader, desc="Validation")
-                        ):
-                            z, nll, y_logits = self.graph(
-                                x=val_batch["x"],
-                                audio_features=val_batch["audio_features"],
-                            )
-
-                            # loss
-                            validation_loss += Glow.loss_generative(nll)
-                        self.writer.add_scalar(
-                            "loss/validation_loss_generative",
-                            validation_loss / (i_val_batch + 1),
-                            self.global_step,
-                        )
-
                     # inference
                     if self.global_step % self.inference_gap == 0 or os.path.isfile(
-                            "do_inference"
+                        "do_inference"
                     ):
                         i = 0
 
@@ -275,11 +255,11 @@ class Trainer(object):
                             f"{str(self.global_step).zfill(7)}-{i}.mp4",
                         )
                         self.video_render.render(
-                                new_path,
-                                x[i].cpu().detach().numpy().transpose(1, 0, 2),
-                                batch["audio_path"][i],
-                                batch["video_path"][i],
-                                batch["first_frame"][i],
+                            new_path,
+                            x[i].cpu().detach().numpy().transpose(1, 0, 2),
+                            batch["audio_path"][i],
+                            batch["video_path"][i],
+                            batch["first_frame"][i],
                         )
                         self.writer.add_text(
                             f"video",
@@ -290,6 +270,25 @@ class Trainer(object):
                         )
                         if os.path.isfile("do_inference"):
                             os.remove("do_inference")
+
+                    if self.global_step % self.validation_gap == 0:
+
+                        validation_loss = 0
+                        for i_val_batch, val_batch in enumerate(
+                            tqdm(self.validation_loader, desc="Validation")
+                        ):
+                            z, nll, y_logits = self.graph(
+                                x=val_batch["x"],
+                                audio_features=val_batch["audio_features"],
+                            )
+
+                            # loss
+                            validation_loss += Glow.loss_generative(nll)
+                        self.writer.add_scalar(
+                            "loss/validation_loss_generative",
+                            validation_loss / (i_val_batch + 1),
+                            self.global_step,
+                        )
 
                 self.global_step += 1
 

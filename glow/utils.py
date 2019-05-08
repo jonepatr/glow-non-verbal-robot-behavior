@@ -41,7 +41,7 @@ class VideoRender(object):
     ):
         with tempfile.TemporaryDirectory() as td:
             for i, x in enumerate(generated_values):
-                AU01_r, AU02_r, AU04_r, AU45_r, pose_Rx, pose_Ry, pose_Rz = x
+                AU01_r, AU02_r, AU04_r, AU45_r, pose_Rx, pose_Ry, pose_Rz, _ = x
                 AU01_r, AU02_r, AU04_r, AU45_r, pose_Rx, pose_Ry, pose_Rz = (
                     float(AU01_r[0]),
                     float(AU02_r[0]),
@@ -100,8 +100,10 @@ class VideoRender(object):
                     str(float(generated_values.shape[0]) / fps),
                     "-i",
                     audio_path,
-                    "-codec",
-                    "copy",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
                     file_name,
                 ],
                 stdout=subprocess.DEVNULL,
