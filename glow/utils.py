@@ -41,11 +41,12 @@ class VideoRender(object):
     ):
         with tempfile.TemporaryDirectory() as td:
             for i, x in enumerate(generated_values):
-                AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = x
-                AU01_r, AU02_r, AU04_r, pose_Rx, pose_Ry, pose_Rz = (
+                AU01_r, AU02_r, AU04_r, AU45_r, pose_Rx, pose_Ry, pose_Rz = x
+                AU01_r, AU02_r, AU04_r, AU45_r, pose_Rx, pose_Ry, pose_Rz = (
                     float(AU01_r[0]),
                     float(AU02_r[0]),
                     float(AU04_r[0]),
+                    float(AU45_r[0]),
                     float(pose_Rx[0]),
                     float(pose_Ry[0]),
                     float(pose_Rz[0]),
@@ -56,10 +57,12 @@ class VideoRender(object):
                         "blendshapes": {
                             "BrowsU_C_L": self.calc_au(AU01_r),  # AU01
                             "BrowsU_C_R": self.calc_au(AU01_r),  # AU01
-                            "BrowsU_L": self.calc_au(AU01_r),  # AU02
-                            "BrowsU_R": self.calc_au(AU01_r),  # AU02
-                            "BrowsD_L": self.calc_au(AU01_r),  # AU04
-                            "BrowsD_R": self.calc_au(AU01_r),  # AU04
+                            "BrowsU_L": self.calc_au(AU02_r),  # AU02
+                            "BrowsU_R": self.calc_au(AU02_r),  # AU02
+                            "BrowsD_L": self.calc_au(AU04_r),  # AU04
+                            "BrowsD_R": self.calc_au(AU04_r),  # AU04
+                            "EyeBlink_L": self.calc_au(AU45_r),  # AU45
+                            "EyeBlink_R": self.calc_au(AU45_r),  # AU45
                         }
                     },
                     "jointShouldersMiddle": {

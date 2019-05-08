@@ -52,7 +52,11 @@ class Speech2FaceDataset(Dataset):
                     for i in range(all_faces_len):
                         first_frame = frame + i
 
-                        face_d.append(all_faces[i].astype(np.float32).reshape(7, 1))
+                        face_d.append(
+                            np.append(all_faces[i].astype(np.float32), 0.0).reshape(
+                                7, 1
+                            )
+                        )
 
                         if first_frame + total_frames < all_faces_len:
 
