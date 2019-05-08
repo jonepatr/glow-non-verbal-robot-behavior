@@ -4,7 +4,7 @@
         "data": "/projects/text2face/data2"
     },
     "Glow" : {
-        "image_shape": [160, 1, 7],
+        "image_shape": [160, 1, 8],
         "spec_frames": 160,
         "n_mels": 80,
         "hidden_channels": 512,
