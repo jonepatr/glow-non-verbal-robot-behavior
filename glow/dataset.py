@@ -54,7 +54,7 @@ class Speech2FaceDataset(Dataset):
 
                         # append is a hack so that instead of 7 we have 8 values
                         face_d.append(
-                            np.append(all_faces[i], 0.0)
+                            np.append(all_faces[i], np.random.uniform())
                             .astype(np.float32)
                             .reshape(8, 1)
                         )
