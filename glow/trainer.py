@@ -242,7 +242,7 @@ class Trainer(object):
                     if self.global_step % self.inference_gap == 0 or os.path.isfile(
                         "do_inference"
                     ):
-                        for i_val_batch, val_batch in self.validation_loader:
+                        for val_batch in self.validation_loader:
 
                             i = 0
 
