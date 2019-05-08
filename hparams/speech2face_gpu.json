@@ -24,7 +24,8 @@
     },
     "Misc" : {
         "video_url": "http://130.237.67.85:5005/runs/",
-        "render_url": "http://130.237.67.85:5000"
+        "render_url": "http://130.237.67.85:5000",
+        "ffmpeg_bin": "/usr/bin/ffmpeg"
     },
     "Data" : {
         "center_crop": 160,

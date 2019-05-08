@@ -116,7 +116,9 @@ class Trainer(object):
         self.inference_gap = hparams.Train.inference_gap
         self.validation_gap = hparams.Train.validation_gap
         self.video_url = hparams.Misc.video_url
-        self.video_render = VideoRender(hparams.Misc.render_url)
+        self.video_render = VideoRender(
+            hparams.Misc.render_url, ffmpeg_bin=hparams.Misc.ffmpeg_bin
+        )
 
     def train(self):
         # set to training state
