@@ -116,7 +116,9 @@ class Trainer(object):
         self.inference_gap = hparams.Train.inference_gap
         self.validation_gap = hparams.Train.validation_gap
         self.video_url = hparams.Misc.video_url
-        self.video_render = VideoRender(hparams.Misc.render_url)
+        self.video_render = VideoRender(
+            hparams.Misc.render_url, ffmpeg_bin=hparams.Misc.ffmpeg_bin
+        )
 
     def train(self):
         # set to training state
@@ -240,34 +242,38 @@ class Trainer(object):
                     if self.global_step % self.inference_gap == 0 or os.path.isfile(
                         "do_inference"
                     ):
-                        i = 0
+                        for i_val_batch, val_batch in self.validation_loader:
 
-                        x = self.graph(
-                            z=None,
-                            audio_features=batch["audio_features"],
-                            y_onehot=y_onehot,
-                            eps_std=1,
-                            reverse=True,
-                        )
-                        new_path = os.path.join(
-                            self.writer.log_dir,
-                            "samples",
-                            f"{str(self.global_step).zfill(7)}-{i}.mp4",
-                        )
-                        self.video_render.render(
-                            new_path,
-                            x[i].cpu().detach().numpy().transpose(1, 0, 2),
-                            batch["audio_path"][i],
-                            batch["video_path"][i],
-                            batch["first_frame"][i],
-                        )
-                        self.writer.add_text(
-                            f"video",
-                            self.video_url
-                            + self.writer.log_dir
-                            + f"/samples/{str(self.global_step).zfill(7)}-{i}.mp4",
-                            self.global_step,
-                        )
+                            i = 0
+
+                            x = self.graph(
+                                z=None,
+                                audio_features=val_batch["audio_features"],
+                                y_onehot=y_onehot,
+                                eps_std=1,
+                                reverse=True,
+                            )
+                            new_path = os.path.join(
+                                self.writer.log_dir,
+                                "samples",
+                                f"{str(self.global_step).zfill(7)}-{i}.mp4",
+                            )
+                            self.video_render.render(
+                                new_path,
+                                x[i].cpu().detach().numpy().transpose(1, 0, 2),
+                                val_batch["audio_path"][i],
+                                val_batch["video_path"][i],
+                                val_batch["first_frame"][i],
+                            )
+                            self.writer.add_text(
+                                f"video",
+                                self.video_url
+                                + self.writer.log_dir
+                                + f"/samples/{str(self.global_step).zfill(7)}-{i}.mp4",
+                                self.global_step,
+                            )
+                            break
+
                         if os.path.isfile("do_inference"):
                             os.remove("do_inference")
 
