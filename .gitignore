@@ -6,3 +6,5 @@ pictures/infer/
 .DS_Store
 .mypy_cache/
 .unison*
+.ipynb_checkpoints
+etxra_stuff/
