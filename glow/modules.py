@@ -329,24 +329,25 @@ class Split2d(nn.Module):
         h = self.conv(z)
         return thops.split_feature(h, "cross")
 
-    def forward(self, input, logdet=0.0, reverse=False, eps_std=None):
+    def forward(self, input, cond, logdet=0.0, reverse=False, eps_std=None):
         if not reverse:
             z1, z2 = thops.split_feature(input, "split")
             mean, logs = self.split2d_prior(z1)
             logdet = GaussianDiag.logp(mean, logs, z2) + logdet
-            return z1, logdet
+            return z1, cond, logdet
         else:
             z1 = input
             mean, logs = self.split2d_prior(z1)
             z2 = GaussianDiag.sample(mean, logs, eps_std)
             z = thops.cat_feature(z1, z2)
-            return z, logdet
+            return z, cond, logdet
 
 
 def squeeze2d(input, factor=2):
     assert factor >= 1 and isinstance(factor, int)
     if factor == 1:
         return input
+
     size = input.size()
     B = size[0]
     C = size[1]
@@ -381,10 +382,16 @@ class SqueezeLayer(nn.Module):
         super().__init__()
         self.factor = factor
 
-    def forward(self, input, logdet=None, reverse=False):
+    def forward(self, input_, cond=None, logdet=None, reverse=False):
         if not reverse:
-            output = squeeze2d(input, self.factor)
-            return output, logdet
+            output = squeeze2d(input_, self.factor)
+            cond_out = squeeze2d(cond, self.factor)
+            return output, cond_out, logdet
         else:
-            output = unsqueeze2d(input, self.factor)
-            return output, logdet
+            output = unsqueeze2d(input_, self.factor)
+            cond_output = unsqueeze2d(cond, self.factor)
+            return output, cond_output, logdet
+
+    def squeeze_cond(self, cond):
+        cond_out = squeeze2d(cond, self.factor)
+        return cond_out

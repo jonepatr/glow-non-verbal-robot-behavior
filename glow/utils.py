@@ -1,14 +1,110 @@
 import copy
+import json
 import os
 import re
+import subprocess
+import tempfile
 from shutil import copyfile
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import requests
 import torch
 
 matplotlib.use("Agg")
+
+
+class VideoRender(object):
+    def __init__(self, render_url, ffmpeg_bin=None):
+        requests.post(render_url, {})
+        self.render_url = render_url
+
+        if not ffmpeg_bin:
+            for sys_path in os.environ["PATH"].split(":"):
+                ffmpeg_location = os.path.join(sys_path, "ffmpeg")
+                if os.path.isfile(ffmpeg_location):
+                    ffmpeg_bin = ffmpeg_location
+                    break
+
+        assert ffmpeg_bin is not None
+        self.ffmpeg_bin = ffmpeg_bin
+
+    @staticmethod
+    def calc_au(x):
+        if x < 1:
+            x = 0
+        return round(x / 4, 4)
+
+    def render(
+        self, file_name, generated_values, audio_path, video_file, first_frame, fps=30
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            for i, x in enumerate(generated_values):
+                AU01_r, AU02_r, AU04_r, AU45_r, pose_Rx, pose_Ry, pose_Rz, _ = x
+                AU01_r, AU02_r, AU04_r, AU45_r, pose_Rx, pose_Ry, pose_Rz = (
+                    float(AU01_r[0]),
+                    float(AU02_r[0]),
+                    float(AU04_r[0]),
+                    float(AU45_r[0]),
+                    float(pose_Rx[0]),
+                    float(pose_Ry[0]),
+                    float(pose_Rz[0]),
+                )
+
+                data = {
+                    "Head_Mesh": {
+                        "blendshapes": {
+                            "BrowsU_C_L": self.calc_au(AU01_r),  # AU01
+                            "BrowsU_C_R": self.calc_au(AU01_r),  # AU01
+                            "BrowsU_L": self.calc_au(AU02_r),  # AU02
+                            "BrowsU_R": self.calc_au(AU02_r),  # AU02
+                            "BrowsD_L": self.calc_au(AU04_r),  # AU04
+                            "BrowsD_R": self.calc_au(AU04_r),  # AU04
+                            "EyeBlink_L": self.calc_au(AU45_r),  # AU45
+                            "EyeBlink_R": self.calc_au(AU45_r),  # AU45
+                        }
+                    },
+                    "jointShouldersMiddle": {
+                        "bones": {
+                            "jointNeck": {"rotation": [pose_Rx, pose_Ry, pose_Rz]},
+                            "jointEyeLeft": {
+                                "rotation": [-pose_Rx, -pose_Ry, -pose_Rz]
+                            },
+                            "jointEyeRight": {
+                                "rotation": [-pose_Rx, -pose_Ry, -pose_Rz]
+                            },
+                        }
+                    },
+                }
+
+                d = requests.post(self.render_url, json.dumps(data))
+
+                with open(os.path.join(td, f"{str(i).zfill(3)}.png"), "wb") as f:
+                    f.write(d.content)
+
+            os.makedirs(os.path.dirname(file_name), exist_ok=True)
+            subprocess.Popen(
+                [
+                    self.ffmpeg_bin,
+                    "-y",
+                    "-framerate",
+                    str(fps),
+                    "-pattern_type",
+                    "glob",
+                    "-i",
+                    os.path.join(td, "*.png"),
+                    "-ss",
+                    str(float(first_frame) / fps),
+                    "-t",
+                    str(float(generated_values.shape[0]) / fps),
+                    "-i",
+                    audio_path,
+                    file_name,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).communicate()
 
 
 def get_proper_cuda_device(device, verbose=True):

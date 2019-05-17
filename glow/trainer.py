@@ -1,7 +1,10 @@
 import datetime
 import os
+import re
 from os.path import join
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -13,7 +16,7 @@ from tqdm import tqdm
 from . import thops
 from .config import JsonConfig
 from .models import Glow
-from .utils import load, plot_prob, save
+from .utils import VideoRender, load, plot_prob, save
 
 # torch.set_num_threads(1)
 
@@ -40,7 +43,8 @@ class Trainer(object):
         loaded_step,
         devices,
         data_device,
-        dataset,
+        train_dataset,
+        validation_dataset,
         hparams,
     ):
         if isinstance(hparams, str):
@@ -74,10 +78,16 @@ class Trainer(object):
         # number of training batches
         self.batch_size = hparams.Train.batch_size
         self.data_loader = DataLoader(
-            dataset,
+            train_dataset,
             batch_size=self.batch_size,
             # num_workers=20,
             shuffle=True,
+            drop_last=True,
+            pin_memory=True,
+        )
+        self.validation_loader = DataLoader(
+            validation_dataset,
+            batch_size=self.batch_size,
             drop_last=True,
             pin_memory=True,
         )
@@ -104,17 +114,23 @@ class Trainer(object):
         self.scalar_log_gaps = hparams.Train.scalar_log_gap
         self.plot_gaps = hparams.Train.plot_gap
         self.inference_gap = hparams.Train.inference_gap
+        self.validation_gap = hparams.Train.validation_gap
         self.video_url = hparams.Misc.video_url
+        self.video_render = VideoRender(
+            hparams.Misc.render_url, ffmpeg_bin=hparams.Misc.ffmpeg_bin
+        )
         self.spec_frames = hparams.Glow.spec_frames
 
     def train(self):
         # set to training state
-        self.graph.train()
+
         self.global_step = self.loaded_step
         # begin to train
         for epoch in range(self.n_epoches):
             print("epoch", epoch)
-            for i_batch, batch in enumerate(tqdm(self.data_loader)):
+            progress = tqdm(self.data_loader)
+            for i_batch, batch in enumerate(progress):
+                self.graph.train()
                 # update learning rate
                 lr = self.lrschedule["func"](
                     global_step=self.global_step, **self.lrschedule["args"]
@@ -166,6 +182,7 @@ class Trainer(object):
                     )
 
                 # forward phase
+
                 z, nll, y_logits = self.graph(
                     x=x, audio_features=batch["audio_features"], y_onehot=y_onehot
                 )
@@ -173,13 +190,12 @@ class Trainer(object):
                 # loss
                 loss_generative = Glow.loss_generative(nll)
                 loss_classes = 0
-                if self.y_condition:
-                    loss_classes = (
-                        Glow.loss_multi_classes(y_logits, y_onehot)
-                        if self.y_criterion == "multi-classes"
-                        else Glow.loss_class(y_logits, y)
-                    )
+
                 if self.global_step % self.scalar_log_gaps == 0:
+                    for name, param in self.graph.named_parameters():
+                        self.writer.add_histogram(
+                            name, param.clone().cpu().data.numpy(), self.global_step
+                        )
                     self.writer.add_scalar(
                         "loss/loss_generative", loss_generative, self.global_step
                     )
@@ -208,7 +224,7 @@ class Trainer(object):
                         )
                 # step
                 self.optim.step()
-
+                self.graph.eval()
                 # checkpoints
                 if (
                     self.global_step % self.checkpoints_gap == 0
@@ -222,102 +238,65 @@ class Trainer(object):
                         is_best=True,
                         max_checkpoints=self.max_checkpoints,
                     )
-                if self.global_step % self.plot_gaps == 0:
-                    img = self.graph(
-                        z=z,
-                        audio_features=batch["audio_features"],
-                        y_onehot=y_onehot,
-                        reverse=True,
-                    )
-                    # img = img.permute(0, 3, 2, 1)
-                    # img = torch.clamp(img, min=0, max=1.0)
-                    if self.y_condition:
-                        if self.y_criterion == "multi-classes":
-                            y_pred = torch.sigmoid(y_logits)
-                        elif self.y_criterion == "single-class":
-                            y_pred = thops.onehot(
-                                torch.argmax(
-                                    F.softmax(y_logits, dim=1), dim=1, keepdim=True
-                                ),
-                                self.y_classes,
-                            )
-                        y_true = y_onehot
-                    for bi in range(min([len(img), 4])):
-                        new_img = torch.cat((img[bi], batch["x"][bi]), dim=0).permute(
-                            2, 0, 1
-                        )
+                with torch.no_grad():
+                    # inference
+                    if self.global_step % self.inference_gap == 0 or os.path.isfile(
+                        "do_inference"
+                    ):
+                        for val_batch in self.validation_loader:
 
-                        self.writer.add_image(
-                            "0_reverse/{}".format(bi),
-                            fix_img(new_img),
-                            self.global_step,
-                        )
-                        if self.y_condition:
-                            self.writer.add_image(
-                                "1_prob/{}".format(bi),
-                                plot_prob([y_pred[bi], y_true[bi]], ["pred", "true"]),
-                                self.global_step,
-                            )
+                            i = 0
 
-                # inference
-                if hasattr(self, "inference_gap"):
-                    if self.global_step % self.inference_gap == 0:
-                        for ci in range(min([len(img), 2])):
-
-                            # sample_z = torch.normal(
-                            #     mean=torch.zeros_like(batch['x']), std=torch.ones_like(logs) * 0.5
-                            # )
-
-                            img = self.graph(
+                            x = self.graph(
                                 z=None,
-                                audio_features=batch["audio_features"],
+                                audio_features=val_batch["audio_features"],
                                 y_onehot=y_onehot,
-                                eps_std=0.5,
+                                eps_std=1,
                                 reverse=True,
                             )
-                            # Batch, 1 , Time , Feaures
-                            # img = img
-
-                            # zzzz = self.data_loader.dataset.pca.inverse_transform(
-                            #     img[0, 0].cpu().detach().numpy()
-                            # ).reshape(-1, 70, 2)
-
-                            # self.writer.add_video(
-                            #    "new_video", vid_tensor=v_np, fps=30, global_step=self.global_step
-                            # )  # , self.global_step
-
-                            new_path = join(
+                            new_path = os.path.join(
                                 self.writer.log_dir,
                                 "samples",
-                                f"{str(self.global_step).zfill(7)}-{ci}.mp4",
+                                f"{str(self.global_step).zfill(7)}-{i}.mp4",
                             )
-                            utils.save_video_with_audio_reference(
-                                img[0]
-                                .cpu()
-                                .detach()
-                                .numpy()
-                                .transpose(1, 0, 2)
-                                .reshape(self.spec_frames, 70, 2),
+                            self.video_render.render(
                                 new_path,
-                                batch["audio_path"][0],
-                                batch["first_frame"][0],
+                                x[i].cpu().detach().numpy().transpose(1, 0, 2),
+                                val_batch["audio_path"][i],
+                                val_batch["video_path"][i],
+                                val_batch["first_frame"][i],
                             )
                             self.writer.add_text(
-                                f"video {ci}",
+                                f"video",
                                 self.video_url
                                 + self.writer.log_dir
-                                + f"/samples/{str(self.global_step).zfill(7)}-{ci}.mp4",
+                                + f"/samples/{str(self.global_step).zfill(7)}-{i}.mp4",
                                 self.global_step,
                             )
-                        # img = torch.clamp(img, min=0, max=1.0)
-                        for bi in range(min([len(img), 4])):
-                            self.writer.add_image(
-                                "2_sample/{}".format(bi),
-                                fix_img(img[bi].permute(2, 0, 1)),
-                                self.global_step,
+                            break
+
+                        if os.path.isfile("do_inference"):
+                            os.remove("do_inference")
+
+                    if self.global_step % self.validation_gap == 0:
+
+                        validation_loss = 0
+                        for i_val_batch, val_batch in enumerate(
+                            tqdm(self.validation_loader, desc="Validation")
+                        ):
+                            z, nll, y_logits = self.graph(
+                                x=val_batch["x"],
+                                audio_features=val_batch["audio_features"],
                             )
 
-                # global step
+                            # loss
+                            validation_loss += Glow.loss_generative(nll)
+                        self.writer.add_scalar(
+                            "loss/validation_loss_generative",
+                            validation_loss / (i_val_batch + 1),
+                            self.global_step,
+                        )
+
                 self.global_step += 1
 
         self.writer.export_scalars_to_json(

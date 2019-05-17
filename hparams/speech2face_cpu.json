@@ -5,12 +5,12 @@
     },
     "Glow" : {
         "image_shape": [1, 1, 140],
-        "spec_frames": 60,
+        "spec_frames": 1,
         "n_mels": 80,
         "hidden_channels": 512,
-        "cond_channels": 128,
+        "cond_channels": 80,
         "K": 32,
-        "L": 4,
+        "L": 2,
         "actnorm_scale": 1.0,
         "flow_permutation": "invconv",
         "flow_coupling": "affine",
@@ -23,12 +23,13 @@
         "y_condition": "single-class"
     },
     "Misc" : {
-        "video_url": "http://130.237.67.85:5005/runs/"
+        "video_url": "http://localhost:5005/runs/",
+        "render_url": "http://localhost:5000",
+        "ffmpeg_bin": "ffmpeg"
     },
     "Data" : {
         "center_crop": 160,
         "resize": 64,
-        "small": false,
         "audio_feature_type": "spectrogram"
     },
     "Optim": {
@@ -47,25 +48,34 @@
         }
     },
     "Device": {
-        "glow": ["cuda:6", "cuda:7"],
-        "glow_small": ["cuda:1"],
-        "data": "cuda:6"
+        "glow": ["cpu"],
+        "glow_small": ["cpu"],
+        "data": "cpu"
     },
     "Train": {
-        "batch_size": 140,
+        "batch_size": 100,
         "num_batches": 1000000,
         "max_grad_clip": 5,
         "max_grad_norm": 100,
         "max_checkpoints": 20,
-        "checkpoints_gap": 5000,
+        "checkpoints_gap": 50,
+        "validation_gap": 50,
         "num_plot_samples": 1,
-        "scalar_log_gap": 50,
+        "scalar_log_gap": 1,
         "plot_gap": 10,
-        "inference_gap": 10,
+        "inference_gap": 50,
         "warm_start": "",
+        "warm_start_2": "./results/speech2face/trained.pkg",
         "weight_y": 0.5
     },
     "Infer": {
         "pre_trained": "./results/speech2face/trained.pkg"
+    },
+    "Files": {
+        "test": [],
+        "validation": [],
+        "train": [
+            "/projects/text2face/data2/PostProcessOpenface/will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/zYGok_gHfY0.npy"
+        ]
     }
 }

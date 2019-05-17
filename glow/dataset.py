@@ -6,38 +6,40 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from luigi_pipeline.audio_processing import MelSpectrogram
-from luigi_pipeline.post_process_openpose import PostProcessOpenpose
-from luigi_pipeline.youtube_downloader import DownloadYoutubeAudio
-from sklearn.decomposition import PCA
+from luigi_pipeline.youtube_downloader import (DownloadYoutubeAudio,
+                                               DownloadYoutubeVideo)
 from tqdm import tqdm
 
 
 class Speech2FaceDataset(Dataset):
     def __init__(
-        self, data_dir=None, total_frames=None, small=None, audio_feature_type=None
+        self, dataset_files, data_dir=None, total_frames=None, audio_feature_type=None
     ):
-        dataset_files = list(
-            glob.glob(
-                PostProcessOpenpose(data_dir=data_dir, yt_video_id="*").output().path
-            )
-        )
-        if small:
-            dataset_files = dataset_files[:2]
+
         self.data = []
 
         self.face_data = []
         self.audio_features_data = []
 
-        for n, openpose_file_path in enumerate(
+        for n, openface_file_path in enumerate(
             tqdm(dataset_files, desc="Loading dataset. Sit back and relax")
         ):
-            filepath = basename(openpose_file_path).replace(".npy", "")
+            filepath = basename(openface_file_path).replace(".npy", "")
             if audio_feature_type == "spectrogram":
                 ms = MelSpectrogram(
                     data_dir=data_dir, yt_video_id=filepath, hop_duration=0.033
                 )
                 audio_feature_data = np.load(ms.output().path).astype(np.float32)
-            audio = DownloadYoutubeAudio(data_dir=data_dir, yt_video_id=filepath)
+            audio_path = (
+                DownloadYoutubeAudio(data_dir=data_dir, yt_video_id=filepath)
+                .output()
+                .path
+            )
+            video_path = (
+                DownloadYoutubeVideo(data_dir=data_dir, yt_video_id=filepath)
+                .output()
+                .path
+            )
 
             self.audio_features_data.append(audio_feature_data)
             self.face_data.append(defaultdict(list))
@@ -46,14 +48,18 @@ class Speech2FaceDataset(Dataset):
             for frame, all_faces in openpose_data.item().items():
                 all_faces_len = len(all_faces)
                 face_d = []
-                if len(all_faces) > total_frames:
-                    data_len = len(all_faces)
-                    for i in range(data_len):
+                if all_faces_len > total_frames:
+                    for i in range(all_faces_len):
                         first_frame = frame + i
 
-                        face_d.append(all_faces[i].astype(np.float32).reshape(140, 1))
+                        # append is a hack so that instead of 7 we have 8 values
+                        face_d.append(
+                            np.append(all_faces[i], np.random.uniform())
+                            .astype(np.float32)
+                            .reshape(8, 1)
+                        )
 
-                        if first_frame + total_frames < data_len:
+                        if first_frame + total_frames < all_faces_len:
 
                             face = (len(self.face_data) - 1, frame, i, i + total_frames)
                             audio_features = (
@@ -72,7 +78,8 @@ class Speech2FaceDataset(Dataset):
                                         face,
                                         audio_features,
                                         first_frame,
-                                        audio.output().path,
+                                        audio_path,
+                                        video_path,
                                     )
                                 )
                     self.face_data[-1][frame] = np.array(face_d)
@@ -81,7 +88,7 @@ class Speech2FaceDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        face, audio_features, first_frame, audio_path, = self.data[index]
+        face, audio_features, first_frame, audio_path, video_path = self.data[index]
 
         face_index, frame, face_start, face_stop = face
         audio_feature_index, audio_feature_start, audio_feature_stop = audio_features
@@ -92,9 +99,10 @@ class Speech2FaceDataset(Dataset):
             ),
             "audio_features": self.audio_features_data[audio_feature_index][
                 audio_feature_start:audio_feature_stop
-            ],
+            ].T,
             "first_frame": first_frame,
             "audio_path": audio_path,
+            "video_path": video_path,
             "y": 1,
         }
 
