@@ -10,7 +10,7 @@
         "hidden_channels": 512,
         "cond_channels": 80,
         "K": 32,
-        "L": 4,
+        "L": 2,
         "actnorm_scale": 1.0,
         "flow_permutation": "invconv",
         "flow_coupling": "affine",
@@ -23,8 +23,8 @@
         "y_condition": "single-class"
     },
     "Misc" : {
-        "video_url": "http://130.237.67.85:5005/runs/",
-        "render_url": "http://130.237.67.85:5000",
+        "video_url": "http://localhost:5005/runs/",
+        "render_url": "http://localhost:5000",
         "ffmpeg_bin": "ffmpeg"
     },
     "Data" : {
