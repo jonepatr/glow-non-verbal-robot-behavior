@@ -6,7 +6,7 @@ from html import unescape
 
 import numpy as np
 
-import soundfile as sf
+#import soundfile as sf
 import tqdm
 from luigi_pipeline.audio_processing import MelSpectrogram
 
@@ -317,10 +317,33 @@ def prepare_model():
             .output()
             .path
         )
-        print(sample[0], mel_spec.shape)
 
-        audio_data = mel_spec[sample[2] * 30 : (sample[2] * 30) + 160]
+        #print(sample[0], mel_spec.shape)
 
+        audio_data = mel_spec[round(sample[2] * 30) : round(sample[2] * 30) + 160]
+        print(audio_data.shape)
+        np.save(f'audio_features/{sample[0]}000000--{i}.npy', audio_data)
+import torch
+from glow.config import JsonConfig
+from glow.builder import build
+
+
+def run_model():
+    hparams_path = 'hparams/speech2face_gpu.json'
+    hparams = JsonConfig(hparams_path)
+    model = build(hparams, False)['graph']
+    _ = model.eval()
+
+    for i, sample in enumerate(chosen_samples):
+
+        e = np.load(f"audio_features/{sample[0]}000000--{i}.npy")
+        dbb = torch.from_numpy(e.T).unsqueeze(0).float().expand(100, -1, -1).to('cuda:3')
+        new_old_img = model(audio_features=dbb, reverse=True)
+
+        print(new_old_img.shape, new_old_img[0].shape, new_old_img[0].squeeze(-1).shape, new_old_img[0].squeeze(-1).cpu().numpy().T.shape)
+        np.save(f'our_model_results/{sample[0]}000000--{i}.npy', new_old_img[0].squeeze(-1).cpu().numpy().T)
+run_model()
+#prepare_model()
 
 # prepare_random_pose()
 # get_random_starting_place_within_keys()
