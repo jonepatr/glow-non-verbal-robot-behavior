@@ -386,11 +386,6 @@ class Glow(nn.Module):
         num_device = len(utils.get_proper_device(hparams.Device.glow, False))
         assert hparams.Train.batch_size % num_device == 0
 
-        self.hidden_size = hparams.Glow.cond_hidden_size
-        self.rnn = nn.LSTMCell(
-            hparams.Glow.n_mels + hparams.Glow.image_shape[2], self.hidden_size
-        )
-        self.rnn_initialized = False
         self.register_parameter(
             "prior_h",
             nn.Parameter(
@@ -426,47 +421,12 @@ class Glow(nn.Module):
         eps_std=None,
         reverse=False,
     ):
-        if not self.rnn_initialized:
-            self.hidden_input = (
-                x.data.new(x.size(0), self.hidden_size).zero_(),
-                x.data.new(x.size(0), self.hidden_size).zero_(),
-            )
-            self.rnn_initialized = True
-        face_outputs = []
-        audio_len = audio_features.size(2)
-        audio_features = audio_features.unsqueeze(-1)
         if not reverse:
-            nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
-            assert x.size(2) == audio_len, (x.shape, audio_features.shape)
-            while len(face_outputs) < audio_len - 1:
-                time = len(face_outputs) + 1
-                input_ = audio_features[:, :, time : time + 1]
-                import pdb
-
-                pdb.set_trace()
-                self.hidden_input = self.rnn(
-                    torch.cat((input_, x[:, :, time - 1 : time]), dim=1),
-                    self.hidden_input,
-                )
-                face_output = x[:, :, time : time + 1]
-                z, nll, _ = self.normal_flow(face_output, self.hidden_input, y_onehot)
-                nlls += nll
-                face_outputs.append(z)
-
-            output = torch.cat(face_outputs, dim=2)
-            return output, nlls / audio_len, None
-
+            return self.normal_flow(x, audio_features.unsqueeze(-1), y_onehot)
         else:
-            if z is not None:
-                assert z.size(2) == audio_len, (z.shape, audio_features.shape)
+            return self.reverse_flow(z, audio_features.unsqueeze(-1), y_onehot, eps_std)
 
-            z_input = None
-            while len(face_outputs) < audio_len:
-                time = len(face_outputs)
-                input_ = audio_features[:, time : time + 1]
-                if z is not None:
-                    z_input = z[:, :, time : time + 1]
-
+    def normal_flow(self, x, audio_features, y_onehot):
         pixels = thops.pixels(x)
         # z = x + torch.normal(
         #     mean=torch.zeros_like(x), std=torch.ones_like(x) * (1.0 / 256.0)
@@ -475,7 +435,6 @@ class Glow(nn.Module):
         logdet = torch.zeros_like(x[:, 0, 0, 0])
         # logdet += float(-np.log(256.0) * pixels)
         # encode
-
         z, objective = self.flow(z, audio_features, logdet=logdet, reverse=False)
         # prior
         mean, logs = self.prior(y_onehot)
@@ -570,3 +529,85 @@ class Glow(nn.Module):
             return 0
         else:
             return Glow.CE(y_logits, y.long())
+
+
+class AutoregressiveGlow(nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.glow = Glow(hparams)
+        self.hidden_size = hparams.Glow.cond_hidden_size
+        self.rnn = nn.LSTMCell(
+            hparams.Glow.n_mels + hparams.Glow.image_shape[2], self.hidden_size
+        )
+        self.rnn_initialized = False
+
+    def forward(
+        self,
+        x=None,
+        audio_features=None,
+        y_onehot=None,
+        z=None,
+        eps_std=None,
+        reverse=False,
+    ):
+        if not self.rnn_initialized:
+            self.hidden_input = (
+                x.data.new(x.size(0), self.hidden_size).zero_(),
+                x.data.new(x.size(0), self.hidden_size).zero_(),
+            )
+            self.rnn_initialized = True
+        face_outputs = []
+        audio_len = audio_features.size(2)
+        audio_features = audio_features.unsqueeze(-1)
+
+        first_x = torch.zeros((x.shape[0], x.shape[1], 1, 1))
+
+        if not reverse:
+            x = torch.cat((first_x, x), dim=2)
+            nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
+            assert x.size(2) == audio_len, (x.shape, audio_features.shape)
+            while len(face_outputs) < audio_len:
+                time = len(face_outputs)
+                input_ = audio_features[:, :, time, 0]
+                prev_face = x[:, :, time, 0]
+
+                self.hidden_input = self.rnn(
+                    torch.cat((input_, prev_face), dim=1), self.hidden_input
+                )
+                face_output = x[:, :, time + 1 : time + 2]
+
+                z, nll, _ = self.glow(
+                    x=face_output, audio_features=self.hidden_input, y_onehot=y_onehot
+                )
+                nlls += nll
+                face_outputs.append(z)
+
+            output = torch.cat(face_outputs, dim=2)
+            return output, nlls / audio_len, None
+
+        else:
+            if z is not None:
+                assert z.size(2) == audio_len, (z.shape, audio_features.shape)
+
+            z_input = None
+            while len(face_outputs) < audio_len:
+                time = len(face_outputs)
+                input_ = audio_features[:, :, time, 0]
+
+                if z is not None:
+                    z_input = z[:, :, time : time + 1]
+
+                if not face_outputs:
+                    prev_face = first_x
+                else:
+                    prev_face = face_outputs[-1]
+
+                self.hidden_input = self.rnn(
+                    torch.cat((input_, prev_face), dim=1), self.hidden_input
+                )
+
+                x = self.reverse_flow(z_input, self.hidden_input, eps_std, y_onehot)
+
+                face_outputs.append(x)
+            output = torch.cat(face_outputs, dim=2)
+            return output
