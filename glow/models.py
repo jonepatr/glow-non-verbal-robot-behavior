@@ -566,7 +566,7 @@ class AutoregressiveGlow(nn.Module):
         if not reverse:
             x = torch.cat((first_x, x), dim=2)
             nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
-            assert x.size(2) == audio_len, (x.shape, audio_features.shape)
+            assert x.size(2) == audio_len + 1, (x.shape, audio_features.shape)
             while len(face_outputs) < audio_len:
                 time = len(face_outputs)
                 input_ = audio_features[:, :, time, 0]
