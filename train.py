@@ -26,14 +26,14 @@ if __name__ == "__main__":
     train_dataset = Speech2FaceDataset(
         train_files,
         data_dir=hparams.Dir.data,
-        total_frames=hparams.Glow.image_shape[0],
+        total_frames=hparams.Glow.total_frames,
         audio_feature_type=hparams.Data.audio_feature_type,
     )
 
     validation_dataset = Speech2FaceDataset(
         validation_files,
         data_dir=hparams.Dir.data,
-        total_frames=hparams.Glow.image_shape[0],
+        total_frames=hparams.Glow.total_frames,
         audio_feature_type=hparams.Data.audio_feature_type,
     )
 
