@@ -105,7 +105,7 @@ class Trainer(object):
 
         # log relative
         # tensorboard
-        self.writer = SummaryWriter(log_dir=self.log_dir)
+        self.writer = SummaryWriter(logdir=self.log_dir)
 
         if False:
             print("DIMPUTING MODLLES")
