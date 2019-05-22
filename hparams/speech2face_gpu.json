@@ -24,8 +24,8 @@
         "y_condition": "single-class"
     },
     "Misc" : {
-        "video_url": "http://130.237.67.85:5005/runs/",
-        "render_url": "http://130.237.67.85:5000",
+        "video_url": "http://130.237.48.218:5005/runs/",
+        "render_url": "http://130.237.48.218:5000",
         "ffmpeg_bin": "/usr/bin/ffmpeg"
     },
     "Data" : {
@@ -49,8 +49,8 @@
         }
     },
     "Device": {
-        "glow": ["cuda:2", "cuda:3", "cuda:4", "cuda:5", "cuda:6", "cuda:7"],
-        "data": "cuda:2"
+        "glow": ["cuda:4", "cuda:5", "cuda:6", "cuda:7"],
+        "data": "cuda:4"
     },
     "Train": {
         "batch_size": 900,
