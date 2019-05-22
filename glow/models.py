@@ -578,7 +578,9 @@ class AutoregressiveGlow(nn.Module):
                 face_output = x[:, :, time + 1 : time + 2]
 
                 z, nll, _ = self.glow(
-                    x=face_output, audio_features=self.hidden_input, y_onehot=y_onehot
+                    x=face_output,
+                    audio_features=self.hidden_input[0],
+                    y_onehot=y_onehot,
                 )
                 nlls += nll
                 face_outputs.append(z)
@@ -607,8 +609,10 @@ class AutoregressiveGlow(nn.Module):
                     torch.cat((input_, prev_face), dim=1), self.hidden_input
                 )
 
-                x = self.reverse_flow(z_input, self.hidden_input, eps_std, y_onehot)
+                x = self.reverse_flow(z_input, self.hidden_input[0], eps_std, y_onehot)
 
                 face_outputs.append(x)
+            output = torch.cat(face_outputs, dim=2)
+            return output
             output = torch.cat(face_outputs, dim=2)
             return output
