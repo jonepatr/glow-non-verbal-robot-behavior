@@ -388,7 +388,7 @@ class Glow(nn.Module):
 
         self.hidden_size = hparams.Glow.cond_hidden_size
         self.rnn = nn.LSTMCell(
-            hparams.Glow.n_mels + self.flow.output_shapes[-1][1], self.hidden_size
+            hparams.Glow.n_mels + hparams.Glow.image_shape[2], self.hidden_size
         )
         self.rnn_initialized = False
         self.register_parameter(
