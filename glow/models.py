@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-
 import torch.nn.functional as F
 
 from glow.conditioning import DeepSpeechEncoder, EncoderHead
@@ -60,6 +59,7 @@ class f_new(nn.Module):
         rnn_input = torch.cat((z, condition), dim=1).squeeze(-1).squeeze(-1)
         self.hidden = self.rnn(rnn_input, self.hidden)
         return self.linear(self.hidden).unsqueeze(-1).unsqueeze(-1)
+
 
 class f_old2(nn.Module):
     """
@@ -385,6 +385,13 @@ class Glow(nn.Module):
         # register prior hidden
         num_device = len(utils.get_proper_device(hparams.Device.glow, False))
         assert hparams.Train.batch_size % num_device == 0
+
+        self.hidden_size = hparams.Glow.cond_hidden_size
+        self.rnn = nn.LSTMCell(
+            hparams.Glow.spec_frames + self.flow.output_shapes[-1][3],
+            self.hidden_size,
+        )
+        self.rnn_initialized = False
         self.register_parameter(
             "prior_h",
             nn.Parameter(
@@ -420,7 +427,9 @@ class Glow(nn.Module):
         eps_std=None,
         reverse=False,
     ):
-
+        if not self.rnn_initialized:
+            self.hidden_input = x.data.new(x.size(0), self.hidden_size).zero_()
+            self.rnn_initialized = True
         face_outputs = []
         audio_len = audio_features.size(1)
         audio_features = audio_features.unsqueeze(-1)
@@ -430,8 +439,15 @@ class Glow(nn.Module):
             while len(face_outputs) < audio_len:
                 time = len(face_outputs)
                 input_ = audio_features[:, time : time + 1]
+                import pdb
+
+                pdb.set_trace()
+                self.hidden_input = self.rnn(
+                    torch.cat(input_, x[:, :, time - 1 : time], dim=1),
+                    self.hidden_input,
+                )
                 face_output = x[:, :, time : time + 1]
-                z, nll, _ = self.normal_flow(face_output, input_, y_onehot)
+                z, nll, _ = self.normal_flow(face_output, self.hidden_input, y_onehot)
                 nlls += nll
                 face_outputs.append(z)
 

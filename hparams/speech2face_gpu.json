@@ -4,11 +4,12 @@
         "data": "/projects/text2face/data2"
     },
     "Glow" : {
-        "image_shape": [160, 1, 8],
-        "spec_frames": 160,
+        "image_shape": [1, 1, 8],
+        "spec_frames": 1,
         "n_mels": 80,
         "hidden_channels": 512,
-        "cond_channels": 80,
+        "cond_hidden_size": 256,
+        "cond_channels": 256,
         "K": 32,
         "L": 2,
         "actnorm_scale": 1.0,
