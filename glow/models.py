@@ -295,9 +295,9 @@ class FlowNet(nn.Module):
 
         for l in range(L):
             # 1. Squeeze
-            C, H, W, N = C * 2, H, W, N * 2  # C: features, H: timesteps
-            self.layers.append(modules.SqueezeLayer(factor=2))
-            self.output_shapes.append([-1, C, H, W])
+            # C, H, W, N = C * 2, H, W, N * 2  # C: features, H: timesteps
+            # self.layers.append(modules.SqueezeLayer(factor=2))
+            # self.output_shapes.append([-1, C, H, W])
             # 2. K FlowStep
             for k in range(K):
                 self.layers.append(
@@ -316,10 +316,10 @@ class FlowNet(nn.Module):
                 )
                 self.output_shapes.append([-1, C, H, W])
             # 3. Split2d
-            # if l < L - 1:
-            #     self.layers.append(modules.Split2d(num_channels=C))
-            #     self.output_shapes.append([-1, C // 2, H, W])
-            #     C = C // 2
+            if l < L - 1:
+                self.layers.append(modules.Split2d(num_channels=C))
+                self.output_shapes.append([-1, C // 2, H, W])
+                C = C // 2
 
     def forward(self, input_, audio_features, logdet=0.0, reverse=False, eps_std=None):
         # audio_features = self.conditionNet(audio_features)  # Spectrogram
