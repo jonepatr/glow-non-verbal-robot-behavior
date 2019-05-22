@@ -549,12 +549,10 @@ class AutoregressiveGlow(nn.Module):
         eps_std=None,
         reverse=False,
     ):
-        if not self.rnn_initialized:
-            self.hidden_input = (
-                x.data.new(x.size(0), self.hidden_size).zero_(),
-                x.data.new(x.size(0), self.hidden_size).zero_(),
-            )
-            self.rnn_initialized = True
+        self.hidden_input = (
+            audio_features.data.new(audio_features.size(0), self.hidden_size).zero_(),
+            audio_features.data.new(audio_features.size(0), self.hidden_size).zero_(),
+        )
         face_outputs = []
         audio_len = audio_features.size(2)
         audio_features = audio_features.unsqueeze(-1)
@@ -601,20 +599,18 @@ class AutoregressiveGlow(nn.Module):
                     z_input = z[:, :, time : time + 1]
 
                 if not face_outputs:
-                    prev_face = first_x
+                    prev_face = first_x.squeeze(-1).squeeze(-1)
                 else:
-                    prev_face = face_outputs[-1]
+                    prev_face = face_outputs[-1].squeeze(-1).squeeze(-1)
 
                 self.hidden_input = self.rnn(
                     torch.cat((input_, prev_face), dim=1), self.hidden_input
                 )
 
-                x = self.reverse_flow(
-                    z_input, self.hidden_input[0].unsqueeze(-1), eps_std, y_onehot
+                x = self.glow(
+                    z=z_input, audio_features=self.hidden_input[0].unsqueeze(-1), eps_std=eps_std, y_onehot=y_onehot, reverse=True
                 )
 
                 face_outputs.append(x)
-            output = torch.cat(face_outputs, dim=2)
-            return output
             output = torch.cat(face_outputs, dim=2)
             return output

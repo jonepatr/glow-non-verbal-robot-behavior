@@ -255,7 +255,7 @@ class Trainer(object):
                                 reverse=True,
                             )
                             new_path = os.path.join(
-                                self.writer.log_dir,
+                                self.writer.logdir,
                                 "samples",
                                 f"{str(self.global_step).zfill(7)}-{i}.mp4",
                             )
@@ -269,7 +269,7 @@ class Trainer(object):
                             self.writer.add_text(
                                 f"video",
                                 self.video_url
-                                + self.writer.log_dir
+                                + self.writer.logdir
                                 + f"/samples/{str(self.global_step).zfill(7)}-{i}.mp4",
                                 self.global_step,
                             )
