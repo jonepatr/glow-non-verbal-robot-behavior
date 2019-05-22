@@ -76,7 +76,7 @@
         "test": [],
         "validation": [],
         "train": [
-            "/projects/text2face/data2/PostProcessOpenface/will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/zYGok_gHfY0.npy"
+            "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/zYGok_gHfY0.npy"
         ]
     }
 }

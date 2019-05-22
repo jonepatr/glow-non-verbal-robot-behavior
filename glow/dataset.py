@@ -27,7 +27,11 @@ class Speech2FaceDataset(Dataset):
             filepath = basename(openface_file_path).replace(".npy", "")
             if audio_feature_type == "spectrogram":
                 ms = MelSpectrogram(
-                    data_dir=data_dir, yt_video_id=filepath, hop_duration=0.033
+                    data_dir=data_dir,
+                    yt_video_id=filepath,
+                    hop_length=540,
+                    sampling_rate=16200,
+                    n_fft=540,
                 )
                 audio_feature_data = np.load(ms.output().path).astype(np.float32)
             audio_path = (
