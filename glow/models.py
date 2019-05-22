@@ -435,14 +435,14 @@ class Glow(nn.Module):
         if not reverse:
             nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
             assert x.size(2) == audio_len, (x.shape, audio_features.shape)
-            while len(face_outputs) < audio_len:
-                time = len(face_outputs)
+            while len(face_outputs) < audio_len - 1:
+                time = len(face_outputs) + 1
                 input_ = audio_features[:, :, time : time + 1]
                 import pdb
 
                 pdb.set_trace()
                 self.hidden_input = self.rnn(
-                    torch.cat(input_, x[:, :, time - 1 : time], dim=1),
+                    torch.cat((input_, x[:, :, time - 1 : time]), dim=1),
                     self.hidden_input,
                 )
                 face_output = x[:, :, time : time + 1]
