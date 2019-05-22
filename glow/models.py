@@ -388,8 +388,7 @@ class Glow(nn.Module):
 
         self.hidden_size = hparams.Glow.cond_hidden_size
         self.rnn = nn.LSTMCell(
-            hparams.Glow.spec_frames + self.flow.output_shapes[-1][3],
-            self.hidden_size,
+            hparams.Glow.spec_frames + self.flow.output_shapes[-1][3], self.hidden_size
         )
         self.rnn_initialized = False
         self.register_parameter(
@@ -431,14 +430,14 @@ class Glow(nn.Module):
             self.hidden_input = x.data.new(x.size(0), self.hidden_size).zero_()
             self.rnn_initialized = True
         face_outputs = []
-        audio_len = audio_features.size(1)
+        audio_len = audio_features.size(2)
         audio_features = audio_features.unsqueeze(-1)
         if not reverse:
             nlls = torch.zeros(audio_features.shape[0]).to(audio_features.device)
             assert x.size(2) == audio_len, (x.shape, audio_features.shape)
             while len(face_outputs) < audio_len:
                 time = len(face_outputs)
-                input_ = audio_features[:, time : time + 1]
+                input_ = audio_features[:, :, time : time + 1]
                 import pdb
 
                 pdb.set_trace()
