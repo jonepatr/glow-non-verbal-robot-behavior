@@ -536,9 +536,8 @@ class AutoregressiveGlow(nn.Module):
         super().__init__()
         self.glow = Glow(hparams)
         self.hidden_size = hparams.Glow.cond_hidden_size
-        self.rnn = nn.LSTMCell(
-            hparams.Glow.n_mels + hparams.Glow.image_shape[2], self.hidden_size
-        )
+        self.output_size = hparams.Glow.image_shape[2]
+        self.rnn = nn.LSTMCell(hparams.Glow.n_mels + self.output_size, self.hidden_size)
         self.rnn_initialized = False
 
     def forward(
@@ -560,7 +559,9 @@ class AutoregressiveGlow(nn.Module):
         audio_len = audio_features.size(2)
         audio_features = audio_features.unsqueeze(-1)
 
-        first_x = torch.zeros((x.shape[0], x.shape[1], 1, 1))
+        first_x = audio_features.data.new(
+            audio_features.size(0), self.output_size, 1, 1
+        ).zero_()
 
         if not reverse:
             x = torch.cat((first_x, x), dim=2)
