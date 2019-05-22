@@ -388,7 +388,7 @@ class Glow(nn.Module):
 
         self.hidden_size = hparams.Glow.cond_hidden_size
         self.rnn = nn.LSTMCell(
-            hparams.Glow.spec_frames + self.flow.output_shapes[-1][3], self.hidden_size
+            hparams.Glow.n_mels + self.flow.output_shapes[-1][1], self.hidden_size
         )
         self.rnn_initialized = False
         self.register_parameter(
@@ -427,7 +427,10 @@ class Glow(nn.Module):
         reverse=False,
     ):
         if not self.rnn_initialized:
-            self.hidden_input = x.data.new(x.size(0), self.hidden_size).zero_()
+            self.hidden_input = (
+                x.data.new(x.size(0), self.hidden_size).zero_(),
+                x.data.new(x.size(0), self.hidden_size).zero_(),
+            )
             self.rnn_initialized = True
         face_outputs = []
         audio_len = audio_features.size(2)
