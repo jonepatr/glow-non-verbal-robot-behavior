@@ -84,7 +84,7 @@ class VideoRender(object):
                     f.write(d.content)
 
             os.makedirs(os.path.dirname(file_name), exist_ok=True)
-            subprocess.Popen(
+            p = subprocess.Popen(
                 [
                     self.ffmpeg_bin,
                     "-y",
@@ -100,10 +100,16 @@ class VideoRender(object):
                     str(float(generated_values.shape[0]) / fps),
                     "-i",
                     audio_path,
+                    "-c:v",
+                    "libx264",
+                    "-c:a",
+                    "ac3",
+                    "-pix_fmt",
+                    "yuv420p",
                     file_name,
                 ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             ).communicate()
 
 
