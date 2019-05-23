@@ -1,1 +1,1 @@
-sudo nvidia-docker run -it -p5005:5005 -p 6545:6006 --cpuset-cpus 0-12 -v $(pwd):/glow -v /projects/text2face/data2:/projects/text2face/data2 -v $(pwd)/results/speech2face:/runs glow_speech2face python train.py hparams/speech2face_gpu.json
+sudo nvidia-docker run -it  --cpuset-cpus 0-20 -v $(pwd):/glow -v /projects/text2face/data2:/projects/text2face/data2 -v $(pwd)/results/speech2face:/runs glow_speech2face python train.py hparams/speech2face_gpu.json "$@"
