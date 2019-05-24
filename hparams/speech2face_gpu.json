@@ -25,8 +25,8 @@
         "y_condition": "single-class"
     },
     "Misc" : {
-        "video_url": "http://130.237.48.218:5005/runs/",
-        "render_url": "http://130.237.48.218:5000",
+        "video_url": "http://130.237.48.218:9998/runs/",
+        "render_url": "http://130.237.48.218:5032",
         "ffmpeg_bin": "/usr/bin/ffmpeg"
     },
     "Data" : {
@@ -65,7 +65,7 @@
         "scalar_log_gap": 10,
         "plot_gap": 20,
         "inference_gap": 50,
-        "warm_start2": "./results/speech2face/trained.pkg",
+        "warm_start2": "results/speech2face/log_20190523_0109/checkpoints/trained.pkg",
         "warm_start": "",
         "weight_y": 0.5
     },
@@ -146,7 +146,6 @@
             "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/8g18BZnMgCY.npy",
             "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/k3q_MImfRIg.npy",
             "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/fUcB1bUBhwk.npy",
-            "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/LRWZuIk7w1k.npy",
             "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/IEEfmbIhC2g.npy",
             "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/c8DfTk28HhI.npy",
             "/projects/text2face/data2/PostProcessOpenface/ffmpeg_bin_ffmpeg-fps_30.0-will_interpolate_True-min_confidence_0.7-min_value_0.001-min_mean_0.1-max_mean_1.0-min_std_0.001-with_blinks_True/OIc83PWSBF4.npy",

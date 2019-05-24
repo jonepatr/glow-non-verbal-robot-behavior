@@ -295,6 +295,15 @@ class GaussianDiag:
     Log2PI = float(np.log(2 * np.pi))
 
     @staticmethod
+    def likelihood_simplified(x):
+        """
+        lnL = -1/2 * { ln|Var| + ((X - Mu)^T)(Var^-1)(X - Mu) + kln(2*PI) }
+              k = 1 (Independent)
+              Var = logs ** 2
+        """
+        return -0.5 * ((x ** 2) + GaussianDiag.Log2PI)
+
+    @staticmethod
     def likelihood(mean, logs, x):
         """
         lnL = -1/2 * { ln|Var| + ((X - Mu)^T)(Var^-1)(X - Mu) + kln(2*PI) }
@@ -304,6 +313,11 @@ class GaussianDiag:
         return -0.5 * (
             logs * 2.0 + ((x - mean) ** 2) / torch.exp(logs * 2.0) + GaussianDiag.Log2PI
         )
+
+    @staticmethod
+    def logp_simplified(x):
+        likelihood = GaussianDiag.likelihood_simplified(x)
+        return thops.sum(likelihood, dim=[1, 2, 3])
 
     @staticmethod
     def logp(mean, logs, x):

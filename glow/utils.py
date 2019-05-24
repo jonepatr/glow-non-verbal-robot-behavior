@@ -248,7 +248,7 @@ def load(step_or_path, graph, optim=None, criterion_dict=None, pkg_dir="", devic
         for k in criterion_dict:
             criterion_dict[k].load_state_dict(state["criterion"][k])
 
-    graph.set_actnorm_init(inited=True)
+    graph.glow.set_actnorm_init(inited=True)
 
     print("[Checkpoint]: Load {} successfully".format(save_path))
     return global_step

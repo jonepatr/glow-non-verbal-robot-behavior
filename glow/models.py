@@ -372,45 +372,12 @@ class Glow(nn.Module):
         )
         self.hparams = hparams
         self.y_classes = hparams.Glow.y_classes
-
-        # for prior
-        if hparams.Glow.learn_top:
-            C = self.flow.output_shapes[-1][1]
-            self.learn_top = modules.Conv2dZeros(C * 2, C * 2)
-
-        if hparams.Glow.y_condition:
-            C = self.flow.output_shapes[-1][1]
-            self.project_ycond = modules.LinearZeros(hparams.Glow.y_classes, 2 * C)
-            self.project_class = modules.LinearZeros(C, hparams.Glow.y_classes)
-        # register prior hidden
-        num_device = len(utils.get_proper_device(hparams.Device.glow, False))
-        assert hparams.Train.batch_size % num_device == 0
-
-        self.register_parameter(
-            "prior_h",
-            nn.Parameter(
-                torch.zeros(
-                    [
-                        hparams.Train.batch_size // num_device,
-                        self.flow.output_shapes[-1][1] * 2,
-                        self.flow.output_shapes[-1][2],
-                        self.flow.output_shapes[-1][3],
-                    ]
-                )
-            ),
-        )
-
-    def prior(self, y_onehot=None):
-        B, C = self.prior_h.size(0), self.prior_h.size(1)
-        h = self.prior_h.detach().clone()
-        assert torch.sum(h) == 0.0
-        if self.hparams.Glow.learn_top:
-            h = self.learn_top(h)
-        if self.hparams.Glow.y_condition:
-            assert y_onehot is not None
-            yp = self.project_ycond(y_onehot).view(B, C, 1, 1)
-            h += yp
-        return thops.split_feature(h, "split")
+        self.x_shape = [
+            self.flow.output_shapes[-1][1] * 2,
+            self.flow.output_shapes[-1][2],
+            self.flow.output_shapes[-1][3],
+        ]
+        
 
     def forward(
         self,
@@ -426,35 +393,29 @@ class Glow(nn.Module):
         else:
             return self.reverse_flow(z, audio_features.unsqueeze(-1), y_onehot, eps_std)
 
+    def get_sample(self, batch_size, eps_std=None):
+        eps_std = eps_std or 1
+        x_shape = [batch_size] + self.x_shape
+        return torch.normal(
+            mean=torch.zeros(x_shape), std=torch.ones(x_shape) * eps_std
+        )
+
     def normal_flow(self, x, audio_features, y_onehot):
         pixels = thops.pixels(x)
-        # z = x + torch.normal(
-        #     mean=torch.zeros_like(x), std=torch.ones_like(x) * (1.0 / 256.0)
-        # )
         z = x
         logdet = torch.zeros_like(x[:, 0, 0, 0])
-        # logdet += float(-np.log(256.0) * pixels)
-        # encode
         z, objective = self.flow(z, audio_features, logdet=logdet, reverse=False)
-        # prior
-        mean, logs = self.prior(y_onehot)
 
-        objective += modules.GaussianDiag.logp(mean, logs, z)
-
-        if self.hparams.Glow.y_condition:
-            y_logits = self.project_class(z.mean(2).mean(2))
-        else:
-            y_logits = None
+        objective += modules.GaussianDiag.logp_simplified(z)
 
         # return
         nll = (-objective) / float(np.log(2.0) * pixels)
-        return z, nll, y_logits
+        return z, nll, None
 
     def reverse_flow(self, z, audio_features, eps_std, y_onehot=None):
         with torch.no_grad():
-            mean, logs = self.prior(y_onehot)
             if z is None:
-                z = modules.GaussianDiag.sample(mean, logs, eps_std)
+                z = self.get_sample(audio_features.shape[0], eps_std)
             x = self.flow(z, audio_features, eps_std=eps_std, reverse=True)
         return x
 
