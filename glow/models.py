@@ -396,9 +396,10 @@ class Glow(nn.Module):
     def get_sample(self, batch_size, eps_std=None):
         eps_std = eps_std or 1
         x_shape = [batch_size] + self.x_shape
+
         return torch.normal(
             mean=torch.zeros(x_shape), std=torch.ones(x_shape) * eps_std
-        )
+        )[:, :x_shape[1] // 2, ...]
 
     def normal_flow(self, x, audio_features, y_onehot):
         pixels = thops.pixels(x)

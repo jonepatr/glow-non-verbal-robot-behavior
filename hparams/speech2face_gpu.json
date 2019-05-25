@@ -5,7 +5,7 @@
     },
     "Glow" : {
         "image_shape": [1, 1, 8],
-        "total_frames": 90,
+        "total_frames": 15,
         "spec_frames": 1,
         "n_mels": 80,
         "hidden_channels": 256,
@@ -25,7 +25,7 @@
         "y_condition": "single-class"
     },
     "Misc" : {
-        "video_url": "http://130.237.48.218:9998/runs/",
+        "video_url": "http://130.237.48.218:5005/runs/",
         "render_url": "http://130.237.48.218:5032",
         "ffmpeg_bin": "/usr/bin/ffmpeg"
     },
@@ -50,11 +50,11 @@
         }
     },
     "Device": {
-        "glow": ["cuda:4", "cuda:5", "cuda:6", "cuda:7"],
-        "data": "cuda:4"
+        "glow": ["cuda:1"],
+        "data": "cuda:1"
     },
     "Train": {
-        "batch_size": 900,
+        "batch_size": 400,
         "num_batches": 1000000,
         "max_grad_clip": 5,
         "max_grad_norm": 100,
